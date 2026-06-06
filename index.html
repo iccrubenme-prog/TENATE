@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Rutas v3.0 - Info Ampliada</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0; padding: 0; display: flex; height: 100vh; background-color: #f4f6f9;
+        }
+        #sidebar {
+            width: 360px; background: white; box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            display: flex; flex-direction: column; z-index: 1000;
+        }
+        .header { background: #2c3e50; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; flex: 1; overflow-y: auto; }
+        #map { flex: 1; height: 100%; }
+        
+        .btn-sync {
+            background: #2f80ed; color: white; border: none; padding: 12px; font-weight: bold;
+            border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 10px; display: block; text-align: center; font-size: 14px;
+        }
+        .btn-sync:hover { background: #1b62c4; }
+
+        .btn-depot-config {
+            background: #e74c3c; color: white; border: none; padding: 10px; font-weight: bold;
+            border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 15px; display: block; text-align: center; font-size: 13px;
+        }
+        button.btn-opt {
+            width: 100%; background: #27ae60; color: white; border: none; padding: 12px;
+            font-size: 16px; font-weight: bold; border-radius: 5px; cursor: pointer; transition: background 0.3s; margin-bottom: 20px;
+        }
+        button.btn-opt:hover { background: #219653; }
+        
+        .route-list { list-style: none; padding: 0; margin: 0; }
+        .route-item {
+            background: #f8f9fa; border-left: 5px solid #3498db; padding: 12px; margin-bottom: 10px;
+            border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); position: relative;
+        }
+        .route-item.depot { border-left-color: #e74c3c; background: #fdf2e9; }
+        .route-item.error-coord { border-left-color: #e67e22; background: #fef5ec; }
+        .route-item.entregado { border-left-color: #2ecc71; background: #f2f9f5; opacity: 0.7; }
+        .route-item.entregado strong { text-decoration: line-through; color: #7f8c8d; }
+        .badge { display: inline-block; background: #3498db; color: white; padding: 2px 7px; border-radius: 50%; font-size: 12px; margin-right: 8px; }
+        .depot .badge { background: #e74c3c; }
+        .error-coord .badge { background: #e67e22; }
+        .entregado .badge { background: #2ecc71; }
+        
+        .btn-navegar { display: inline-block; margin-top: 8px; background: #4285F4; color: white; border: none; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; text-decoration: none; }
+        .btn-manual { display: inline-block; margin-top: 8px; background: #e67e22; color: white; border: none; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; }
+        .btn-popup-entregar { background: #2ecc71; color: white; border: none; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; margin-left: 5px; }
+        
+        /* Pin con número adentro */
+        .pin-contenedor { position: relative; width: 32px; height: 32px; }
+        .pin-numero {
+            position: absolute; top: 6px; left: 0; width: 32px; text-align: center;
+            color: white; font-weight: bold; font-size: 12px; font-family: Arial, sans-serif; z-index: 10;
+        }
+        .svg-icon-marcador { display: flex; justify-content: center; align-items: center; }
+        
+        .monto-tag { font-weight: bold; color: #2c3e50; font-size: 13px; margin-top: 2px; display: inline-block;}
+        .info-adicional { font-size: 12px; color: #555; margin-top: 4px; }
+        
+        #payment-modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 9999; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: white; padding: 25px; border-radius: 8px; width: 300px; text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .modal-content select { width: 100%; padding: 10px; margin: 15px 0; border-radius: 5px; border: 1px solid #ccc; font-size: 15px;}
+        .modal-btn { background: #2ecc71; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer; width: 100%; }
+        .modal-btn-cancel { background: #7f8c8d; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="header">
+            <h2 style="margin:0; font-size: 20px;">Logística de Envíos</h2>
+            <p style="margin: 5px 0 0 0; font-size: 13px; opacity: 0.8;">Base de Datos Nube Activa</p>
+        </div>
+        <div class="content">
+            <button class="btn-sync" onclick="importarDatosDesdeSheets()">🔄 Sincronizar Google Sheets</button>
+            <button class="btn-depot-config" onclick="configurarDepositoManual()">⚙️ Configurar Depósito</button>
+            <button class="btn-opt" onclick="optimizarRuta()">Calcular Ruta Óptima</button>
+            
+            <h3>Orden de Distribución</h3>
+            <ul id="lista-ruta" class="route-list"></ul>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="payment-modal">
+        <div class="modal-content">
+            <h3 style="margin-top:0;" id="modal-cliente-name">Registrar Entrega</h3>
+            <p id="modal-cliente-monto"></p>
+            <label for="select-pago">Selecciona el Método de Pago:</label>
+            <select id="select-pago">
+                <option value="efectivo">💵 Efectivo</option>
+                <option value="tarjeta">💳 Tarjeta</option>
+                <option value="transferencia">📲 Transferencia</option>
+                <option value="pagado">✓ Pagado (Anticipado)</option>
+            </select>
+            <button class="modal-btn" onclick="confirmarEntregaConPago()">Confirmar Entrega</button>
+            <button class="modal-btn modal-btn-cancel" onclick="cerrarModalPago()">Cancelar</button>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // ⚠️ REEMPLAZA ESTA URL POR TU ENLACE ACTUALIZADO DE APPS SCRIPT ⚠️
+        const URL_GOOGLE_SCRIPT = "https://script.google.com/macros/s/AKfycbxWR0Th-bADgFDlXbx6L-HswFo_cDxXjpa9OQTw6v_4Ha5owra7-MwdOZEnwhDc4dQhkw/exec";
+
+        let deposito = { id: 0, nombre: "Depósito Central", lat: 19.4326, lng: -99.1332 };
+        let clientes = [];
+        let rutaActualOrdenada = [deposito];
+        let clienteEnProcesoId = null;
+
+        // FUNCIÓN MEJORADA: CREA EL PIN INCORPORANDO EL NÚMERO SECUENCIAL ADENTRO
+        function crearIconoSvgConNumero(color, numero) {
+            const htmlCompleto = `
+                <div class="pin-contenedor">
+                    <div class="pin-numero">${numero}</div>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+                        <path fill="${color}" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+                    </svg>
+                </div>
+            `;
+            return L.divIcon({ className: 'svg-icon-marcador', html: htmlCompleto, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32] });
+        }
+
+        const map = L.map('map').setView([deposito.lat, deposito.lng], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+
+        let marcadoresMapeados = {}; 
+        let lineaRuta = null;
+
+        map.on('contextmenu', function(e) {
+            deposito.lat = e.latlng.lat; deposito.lng = e.latlng.lng;
+            rutaActualOrdenada[0] = deposito;
+            refrescarMapaYLista();
+            if (lineaRuta) optimizarRuta();
+        });
+
+        function obtenerEnlaceMaps(lat, lng) { return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`; }
+
+        function extraerCoordenadasDeTexto(textoUrl) {
+            if (!textoUrl) return null;
+            let url = decodeURIComponent(textoUrl.toString().trim());
+            if (url.includes("maps.app.goo.gl") || url.includes("goo.gl")) return null; 
+
+            const regexDecimalPuro = /(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/;
+            const coincidenciaDecimalPura = url.match(regexDecimalPuro);
+            if (coincidenciaDecimalPura) {
+                return { lat: parseFloat(coincidenciaDecimalPura[1]), lng: parseFloat(coincidenciaDecimalPura[2]) };
+            }
+            return null;
+        }
+
+        function configurarDepositoManual() {
+            const entrada = prompt("Configurar ubicación del Depósito:", `${deposito.lat}, ${deposito.lng}`);
+            if (entrada) {
+                const coordenadas = extraerCoordenadasDeTexto(entrada);
+                if (coordenadas) {
+                    deposito.lat = coordenadas.lat; deposito.lng = coordenadas.lng;
+                    rutaActualOrdenada[0] = deposito;
+                    map.setView([deposito.lat, deposito.lng], 14);
+                    refrescarMapaYLista();
+                    if (lineaRuta) optimizarRuta();
+                }
+            }
+        }
+
+        function importarDatosDesdeSheets() {
+            if(URL_GOOGLE_SCRIPT === "TU_URL_DE_APPS_SCRIPT_AQUI" || URL_GOOGLE_SCRIPT.trim() === "") {
+                alert("Por favor inserta tu URL válida de Google Apps Script en el código HTML primero."); return;
+            }
+
+            limpiarMarcadores();
+            clientes = [];
+
+            fetch(URL_GOOGLE_SCRIPT)
+                .then(res => { if (!res.ok) throw new Error("HTTP error " + res.status); return res.json(); })
+                .then(datosNube => {
+                    if(datosNube.error) { alert("Error: " + datosNube.error); return; }
+                    
+                    datosNube.forEach((item) => {
+                        const puntoGeografico = extraerCoordenadasDeTexto(item.ubicacionText);
+                        clientes.push({
+                            id: item.id,
+                            nombre: item.nombre,
+                            monto: item.monto,
+                            lat: puntoGeografico ? puntoGeografico.lat : null,
+                            lng: puntoGeografico ? puntoGeografico.lng : null,
+                            urlOriginal: item.ubicacionText,
+                            entregado: item.entregado,
+                            metodoPago: item.metodoPago,
+                            telefono: item.telefono,
+                            direccion: item.direccion
+                        });
+                    });
+
+                    rutaActualOrdenada = [deposito, ...clientes];
+                    refrescarMapaYLista();
+
+                    const validos = clientes.filter(c => c.lat !== null).map(c => [c.lat, c.lng]);
+                    if(validos.length > 0) {
+                        validos.push([deposito.lat, deposito.lng]);
+                        map.fitBounds(validos, { padding: [50, 50] });
+                    }
+                })
+                .catch(err => alert("Error al conectar: " + err));
+        }
+
+        function mostrarDireccionAlert(nombre, dir) {
+            alert(`📍 Dirección de ${nombre}:\n\n${dir}`);
+        }
+
+        function asignarCoordenadaManual(id) {
+            const cliente = clientes.find(c => c.id === id);
+            if (!cliente) return;
+            const entrada = prompt(`Coordenadas para ${cliente.nombre}:`);
+            if (entrada) {
+                const numeros = entrada.match(/(-?\d+\.\d+)/g);
+                if (numeros && numeros.length >= 2) {
+                    cliente.lat = parseFloat(numeros[0]); 
+                    cliente.lng = parseFloat(numeros[1]);
+                    refrescarMapaYLista();
+                }
+            }
+        }
+
+        function limpiarMarcadores() {
+            for (let id in marcadoresMapeados) { map.removeLayer(marcadoresMapeados[id]); }
+            marcadoresMapeados = {};
+            if (lineaRuta) map.removeLayer(lineaRuta);
+        }
+
+        function refrescarMapaYLista() {
+            // Eliminar marcadores existentes antes de redibujar con los nuevos números secuenciales
+            for (let id in marcadoresMapeados) { map.removeLayer(marcadoresMapeados[id]); }
+            marcadoresMapeados = {};
+
+            // 1. Dibujar Depósito (Es el paso 'H' o Inicio)
+            marcadoresMapeados[0] = L.marker([deposito.lat, deposito.lng], {icon: crearIconoSvgConNumero('#e74c3c', 'H')}).addTo(map);
+
+            // 2. Dibujar clientes con su número de orden secuencial actual
+            rutaActualOrdenada.forEach((punto, index) => {
+                if (punto.id !== 0 && punto.lat !== null && punto.lng !== null) {
+                    const colorPin = punto.entregado ? '#2ecc71' : '#3498db';
+                    
+                    const contenidoPopup = `
+                        <b>[#${index}] ${punto.nombre}</b><br>
+                        Monto: $${punto.monto}<br>
+                        ${punto.telefono ? `📞 Tel: <a href="tel:${punto.telefono}">${punto.telefono}</a><br>` : ''}
+                        🏠 Dirección: ${punto.direccion.substring(0, 30)}...<br><br>
+                        <button class="btn-navegar" style="background:#8e44ad; padding:4px 6px;" onclick="mostrarDireccionAlert('${punto.nombre}', '${punto.direccion.replace(/'/g, "\\'")}')">📋 Ver Dir</button>
+                        <a href="${obtenerEnlaceMaps(punto.lat, punto.lng)}" target="_blank" class="btn-navegar">🚗 Maps</a>
+                        <button class="btn-popup-entregar" onclick="abrirModalPago(${punto.id})">
+                            ${punto.entregado ? '✓ Sincronizado' : '✓ Entregar'}
+                        </button>
+                    `;
+                    
+                    marcadoresMapeados[punto.id] = L.marker([punto.lat, punto.lng], {
+                        icon: crearIconoSvgConNumero(colorPin, index)
+                    }).addTo(map).bindPopup(contenidoPopup);
+                }
+            });
+
+            mostrarListaRuta(rutaActualOrdenada);
+        }
+
+        function abrirModalPago(id) {
+            const cliente = clientes.find(c => c.id === id);
+            if (!cliente || cliente.entregado) return;
+            clienteEnProcesoId = id;
+            document.getElementById("modal-cliente-name").innerText = cliente.nombre;
+            document.getElementById("modal-cliente-monto").innerText = `Monto a Cobrar: $${cliente.monto}`;
+            document.getElementById("payment-modal").style.display = "flex";
+            map.closePopup();
+        }
+
+        function cerrarModalPago() {
+            document.getElementById("payment-modal").style.display = "none";
+            clienteEnProcesoId = null;
+        }
+
+        function confirmarEntregaConPago() {
+            const id = clienteEnProcesoId;
+            const cliente = clientes.find(c => c.id === id);
+            const metodo = document.getElementById("select-pago").value;
+
+            if (!cliente) return;
+            document.getElementById("payment-modal").style.display = "none";
+
+            fetch(URL_GOOGLE_SCRIPT, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nombre: cliente.nombre, metodoPago: metodo })
+            })
+            .then(() => {
+                cliente.entregado = true;
+                cliente.metodoPago = metodo;
+                refrescarMapaYLista();
+            })
+            .catch(err => alert("Error: " + err));
+        }
+
+        function mostrarListaRuta(lista) {
+            const contenedor = document.getElementById('lista-ruta');
+            contenedor.innerHTML = '';
+            lista.forEach((punto, index) => {
+                const esDepot = punto.id === 0;
+                const tieneUbicacion = punto.lat !== null && punto.lng !== null;
+                const li = document.createElement('li');
+                li.className = `route-item ${esDepot ? 'depot' : ''} ${!esDepot && !tieneUbicacion ? 'error-coord' : ''} ${punto.entregado ? 'entregado' : ''}`;
+                
+                let paso = index === 0 ? "Inicio" : index;
+                let etiquetaEstado = esDepot ? 'Carga' : (!tieneUbicacion ? '⚠️ Link de Cel (Usa Ubicar)' : (punto.entregado ? `✓ Entregado (${punto.metodoPago.toUpperCase()})` : 'Pendiente'));
+                
+                li.innerHTML = `
+                    <span class="badge">${paso}</span>
+                    <strong>${punto.nombre}</strong> <br>
+                    ${!esDepot ? `<span class="monto-tag">Cobro: $${punto.monto}</span><br>` : ''}
+                    
+                    ${!esDepot && punto.telefono ? `<div class="info-adicional">📞 <b>Tel:</b> <a href="tel:${punto.telefono}">${punto.telefono}</a> | <a href="https://wa.me/${punto.telefono.replace(/\D/g,'')}" target="_blank" style="color:#25D366;font-weight:bold;">WhatsApp</a></div>` : ''}
+                    ${!esDepot ? `<div class="info-adicional">🏠 <b>Dir:</b> ${punto.direccion}</div>` : ''}
+                    
+                    <span style="font-size: 11px; display:inline-block; margin-top:5px; color:#7f8c8d; font-weight:500;">${etiquetaEstado}</span><br>
+                    
+                    ${esDepot || tieneUbicacion ? `<a href="${obtenerEnlaceMaps(punto.lat, punto.lng)}" target="_blank" class="btn-navegar">GPS</a>` : ''}
+                    ${!esDepot && punto.urlOriginal ? `<a href="${punto.urlOriginal}" target="_blank" class="btn-navegar" style="background:#7f8c8d;">🔗 Abrir Link Cel</a>` : ''}
+                    ${!esDepot ? `<button class="btn-manual" onclick="asignarCoordenadaManual(${punto.id})">⚙️ Ubicar</button>` : ''}
+                    ${!esDepot ? `<button class="btn-navegar" style="background:#8e44ad;" onclick="mostrarDireccionAlert('${punto.nombre}', '${punto.direccion.replace(/'/g, "\\'")}')">📋 Ver Dir</button>` : ''}
+                    ${!esDepot && tieneUbicacion && !punto.entregado ? `<button class="btn-popup-entregar" style="margin-top:8px;" onclick="abrirModalPago(${punto.id})">✓ Entregar</button>` : ''}
+                `;
+                contenedor.appendChild(li);
+            });
+        }
+
+        function optimizarRuta() {
+            const clientesValidos = clientes.filter(c => c.lat !== null && c.lng !== null);
+            if(clientesValidos.length === 0) return;
+            let noVisitados = [...clientesValidos], rutaOptima = [deposito], puntoActual = deposito;
+            while (noVisitados.length > 0) {
+                let vecinoCercano = null, distanciaMinima = Infinity, indexCercano = -1;
+                for (let i = 0; i < noVisitados.length; i++) {
+                    let d = Math.sqrt(Math.pow(puntoActual.lat - noVisitados[i].lat, 2) + Math.pow(puntoActual.lng - noVisitados[i].lng, 2));
+                    if (d < distanciaMinima) { distanciaMinima = d; vecinoCercano = noVisitados[i]; indexCercano = i; }
+                }
+                rutaOptima.push(vecinoCercano); puntoActual = vecinoCercano; noVisitados.splice(indexCercano, 1);
+            }
+            rutaActualOrdenada = [...rutaOptima, ...clientes.filter(c => c.lat === null || c.lng === null)];
+            trazarRutaPorCalles(rutaOptima); 
+            refrescarMapaYLista(); // Redibuja los pines del mapa para actualizar sus números secuenciales según el nuevo orden
+        }
+
+        function trazarRutaPorCalles(ruta) {
+            if (lineaRuta) map.removeLayer(lineaRuta);
+            const coordenadasQuery = ruta.map(punto => `${punto.lng},${punto.lat}`).join(';');
+            fetch(`https://router.project-osrm.org/route/v1/driving/${coordenadasQuery}?overview=full&geometries=geojson`)
+                .then(r => r.json()).then(datos => {
+                    if (datos.code === 'Ok') {
+                        lineaRuta = L.geoJSON(datos.routes[0].geometry, { style: { color: '#2980b9', weight: 5, opacity: 0.8 } }).addTo(map);
+                    }
+                });
+        }
+
+        window.onload = () => { refrescarMapaYLista(); };
+    </script>
+</body>
+</html>
