@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Rutas v3.0 - Info Ampliada</title>
+    <title>Sistema de Rutas v5.1 - GPS Corregido</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body {
@@ -50,9 +50,10 @@
         
         .btn-navegar { display: inline-block; margin-top: 8px; background: #4285F4; color: white; border: none; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; text-decoration: none; }
         .btn-manual { display: inline-block; margin-top: 8px; background: #e67e22; color: white; border: none; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; }
+        .btn-gps-vivo { display: inline-block; margin-top: 8px; background: #9b59b6; color: white; border: none; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; margin-left: 3px; }
+        .btn-gps-vivo:hover { background: #8e44ad; }
         .btn-popup-entregar { background: #2ecc71; color: white; border: none; padding: 4px 8px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; margin-left: 5px; }
         
-        /* Pin con número adentro */
         .pin-contenedor { position: relative; width: 32px; height: 32px; }
         .pin-numero {
             position: absolute; top: 6px; left: 0; width: 32px; text-align: center;
@@ -85,7 +86,7 @@
         </div>
         <div class="content">
             <button class="btn-sync" onclick="importarDatosDesdeSheets()">🔄 Sincronizar Google Sheets</button>
-            <button class="btn-depot-config" onclick="configurarDepositoManual()">⚙️ Configurar Depósito</button>
+            <button class="btn-depot-config" onclick="configurarDepositoManual()">⚙️ Ubicación TENATE</button>
             <button class="btn-opt" onclick="optimizarRuta()">Calcular Ruta Óptima</button>
             
             <h3>Orden de Distribución</h3>
@@ -113,15 +114,14 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // ⚠️ REEMPLAZA ESTA URL POR TU ENLACE ACTUALIZADO DE APPS SCRIPT ⚠️
-        const URL_GOOGLE_SCRIPT = "https://script.google.com/macros/s/AKfycbxWR0Th-bADgFDlXbx6L-HswFo_cDxXjpa9OQTw6v_4Ha5owra7-MwdOZEnwhDc4dQhkw/exec";
+        // ⚠️ REEMPLAZA ESTA URL POR TU ENLACE DE APPS SCRIPT ⚠️
+        const URL_GOOGLE_SCRIPT = "TU_URL_DE_APPS_SCRIPT_AQUI";
 
-        let deposito = { id: 0, nombre: "Depósito Central", lat: 19.4326, lng: -99.1332 };
+        let deposito = { id: 0, nombre: "TENATE", lat: 19.000225768309267, lng: -98.21576086156658 };
         let clientes = [];
         let rutaActualOrdenada = [deposito];
         let clienteEnProcesoId = null;
 
-        // FUNCIÓN MEJORADA: CREA EL PIN INCORPORANDO EL NÚMERO SECUENCIAL ADENTRO
         function crearIconoSvgConNumero(color, numero) {
             const htmlCompleto = `
                 <div class="pin-contenedor">
@@ -134,7 +134,7 @@
             return L.divIcon({ className: 'svg-icon-marcador', html: htmlCompleto, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32] });
         }
 
-        const map = L.map('map').setView([deposito.lat, deposito.lng], 13);
+        const map = L.map('map').setView([deposito.lat, deposito.lng], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 
         let marcadoresMapeados = {}; 
@@ -147,25 +147,26 @@
             if (lineaRuta) optimizarRuta();
         });
 
-        function obtenerEnlaceMaps(lat, lng) { return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`; }
+        function obtenerEnlaceMaps(lat, lng) { return `https://maps.google.com/?q=${lat},${lng}`; }
 
-        function extraerCoordenadasDeTexto(textoUrl) {
-            if (!textoUrl) return null;
-            let url = decodeURIComponent(textoUrl.toString().trim());
-            if (url.includes("maps.app.goo.gl") || url.includes("goo.gl")) return null; 
-
-            const regexDecimalPuro = /(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/;
-            const coincidenciaDecimalPura = url.match(regexDecimalPuro);
-            if (coincidenciaDecimalPura) {
-                return { lat: parseFloat(coincidenciaDecimalPura[1]), lng: parseFloat(coincidenciaDecimalPura[2]) };
+        function procesarCoordenadasDirectas(textoCoord) {
+            if (!textoCoord) return null;
+            const limpio = textoCoord.toString().replace(/\s+/g, '');
+            const partes = limpio.split(',');
+            if (partes.length === 2) {
+                const lat = parseFloat(partes[0]);
+                const lng = parseFloat(partes[1]);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    return { lat: lat, lng: lng };
+                }
             }
             return null;
         }
 
         function configurarDepositoManual() {
-            const entrada = prompt("Configurar ubicación del Depósito:", `${deposito.lat}, ${deposito.lng}`);
+            const entrada = prompt(`Configurar ubicación de ${deposito.nombre}:`, `${deposito.lat}, ${deposito.lng}`);
             if (entrada) {
-                const coordenadas = extraerCoordenadasDeTexto(entrada);
+                const coordenadas = procesarCoordenadasDirectas(entrada);
                 if (coordenadas) {
                     deposito.lat = coordenadas.lat; deposito.lng = coordenadas.lng;
                     rutaActualOrdenada[0] = deposito;
@@ -178,7 +179,7 @@
 
         function importarDatosDesdeSheets() {
             if(URL_GOOGLE_SCRIPT === "TU_URL_DE_APPS_SCRIPT_AQUI" || URL_GOOGLE_SCRIPT.trim() === "") {
-                alert("Por favor inserta tu URL válida de Google Apps Script en el código HTML primero."); return;
+                return;
             }
 
             limpiarMarcadores();
@@ -190,7 +191,8 @@
                     if(datosNube.error) { alert("Error: " + datosNube.error); return; }
                     
                     datosNube.forEach((item) => {
-                        const puntoGeografico = extraerCoordenadasDeTexto(item.ubicacionText);
+                        let puntoGeografico = procesarCoordenadasDirectas(item.coordenadasDirectas);
+                        
                         clientes.push({
                             id: item.id,
                             nombre: item.nombre,
@@ -221,18 +223,76 @@
             alert(`📍 Dirección de ${nombre}:\n\n${dir}`);
         }
 
-        function asignarCoordenadaManual(id) {
+        // 🔥 CORRECCIÓN AQUÍ: Ahora fuerza una resincronización limpia tras guardar coordenadas
+        function mandarCoordenadasAlServidor(cliente, lat, lng) {
+            const coordenadasString = `${lat}, ${lng}`;
+            fetch(URL_GOOGLE_SCRIPT, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ 
+                    nombre: cliente.nombre, 
+                    accion: "guardar_coordenadas", 
+                    coordenadas: coordenadasString 
+                })
+            })
+            .then(() => {
+                alert(`✓ Ubicación de ${cliente.nombre} guardada en Google Sheets. Sincronizando datos...`);
+                // En lugar de mutar la memoria local de forma incorrecta, jalamos la lista limpia desde la nube
+                importarDatosDesdeSheets();
+            })
+            .catch(err => alert("Error al guardar en la nube: " + err));
+        }
+
+        function asignarYEnviarCoordenadaManual(id) {
             const cliente = clientes.find(c => c.id === id);
             if (!cliente) return;
-            const entrada = prompt(`Coordenadas para ${cliente.nombre}:`);
+            const entrada = prompt(`Asignar coordenadas para ${cliente.nombre}:\n(Pega la latitud y longitud numéricas de Google Maps. Ej: 19.4326, -99.1332)`);
             if (entrada) {
                 const numeros = entrada.match(/(-?\d+\.\d+)/g);
                 if (numeros && numeros.length >= 2) {
-                    cliente.lat = parseFloat(numeros[0]); 
-                    cliente.lng = parseFloat(numeros[1]);
-                    refrescarMapaYLista();
+                    mandarCoordenadasAlServidor(cliente, parseFloat(numeros[0]), parseFloat(numeros[1]));
+                } else {
+                    alert("Formato incorrecto. Deben ser números decimales separados por coma.");
                 }
             }
+        }
+
+        function capturarGpsEnVivoRepartidor(id) {
+            const cliente = clientes.find(c => c.id === id);
+            if (!cliente) return;
+
+            if (!navigator.geolocation) {
+                alert("Tu teléfono o navegador no soporta la localización GPS en vivo.");
+                return;
+            }
+
+            const confirmar = confirm(`¿Estás parado actualmente en la ubicación de ${cliente.nombre}? \n\nPresiona Aceptar para capturar tus coordenadas GPS actuales y subirlas a Google Sheets.`);
+            if (!confirmar) return;
+
+            navigator.geolocation.getCurrentPosition(
+                function (posicion) {
+                    const latCelular = posicion.coords.latitude;
+                    const lngCelular = posicion.coords.longitude;
+                    mandarCoordenadasAlServidor(cliente, latCelular, lngCelular);
+                },
+                function (error) {
+                    switch(error.code) {
+                        case error.PERMISSION_DENIED:
+                            alert("Error: Debes permitir el acceso al GPS en tu celular para usar esta función.");
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            alert("Error: No se pudo obtener una señal de GPS estable.");
+                            break;
+                        case error.TIMEOUT:
+                            alert("Error: Se agotó el tiempo de espera del GPS.");
+                            break;
+                        default:
+                            alert("Error de GPS: " + error.message);
+                    }
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
         }
 
         function limpiarMarcadores() {
@@ -242,14 +302,13 @@
         }
 
         function refrescarMapaYLista() {
-            // Eliminar marcadores existentes antes de redibujar con los nuevos números secuenciales
             for (let id in marcadoresMapeados) { map.removeLayer(marcadoresMapeados[id]); }
             marcadoresMapeados = {};
 
-            // 1. Dibujar Depósito (Es el paso 'H' o Inicio)
-            marcadoresMapeados[0] = L.marker([deposito.lat, deposito.lng], {icon: crearIconoSvgConNumero('#e74c3c', 'H')}).addTo(map);
+            // Dibujar TENATE con pin distintivo 'T'
+            marcadoresMapeados[0] = L.marker([deposito.lat, deposito.lng], {icon: crearIconoSvgConNumero('#e74c3c', 'T')}).addTo(map);
 
-            // 2. Dibujar clientes con su número de orden secuencial actual
+            // Dibujar los clientes con su número secuencial correspondiente basados en el orden actual de la lista
             rutaActualOrdenada.forEach((punto, index) => {
                 if (punto.id !== 0 && punto.lat !== null && punto.lng !== null) {
                     const colorPin = punto.entregado ? '#2ecc71' : '#3498db';
@@ -321,12 +380,12 @@
                 const li = document.createElement('li');
                 li.className = `route-item ${esDepot ? 'depot' : ''} ${!esDepot && !tieneUbicacion ? 'error-coord' : ''} ${punto.entregado ? 'entregado' : ''}`;
                 
-                let paso = index === 0 ? "Inicio" : index;
-                let etiquetaEstado = esDepot ? 'Carga' : (!tieneUbicacion ? '⚠️ Link de Cel (Usa Ubicar)' : (punto.entregado ? `✓ Entregado (${punto.metodoPago.toUpperCase()})` : 'Pendiente'));
+                let paso = index === 0 ? "TENATE" : index;
+                let etiquetaEstado = esDepot ? 'Punto de Salida' : (!tieneUbicacion ? '⚠️ Sin Ubicación Guardada' : (punto.entregado ? `✓ Entregado (${punto.metodoPago.toUpperCase()})` : 'Pendiente'));
                 
                 li.innerHTML = `
-                    <span class="badge">${paso}</span>
-                    <strong>${punto.nombre}</strong> <br>
+                    <span class="badge">${index === 0 ? 'T' : paso}</span>
+                    <strong>${esDepot ? 'TENATE' : punto.nombre}</strong> <br>
                     ${!esDepot ? `<span class="monto-tag">Cobro: $${punto.monto}</span><br>` : ''}
                     
                     ${!esDepot && punto.telefono ? `<div class="info-adicional">📞 <b>Tel:</b> <a href="tel:${punto.telefono}">${punto.telefono}</a> | <a href="https://wa.me/${punto.telefono.replace(/\D/g,'')}" target="_blank" style="color:#25D366;font-weight:bold;">WhatsApp</a></div>` : ''}
@@ -336,9 +395,10 @@
                     
                     ${esDepot || tieneUbicacion ? `<a href="${obtenerEnlaceMaps(punto.lat, punto.lng)}" target="_blank" class="btn-navegar">GPS</a>` : ''}
                     ${!esDepot && punto.urlOriginal ? `<a href="${punto.urlOriginal}" target="_blank" class="btn-navegar" style="background:#7f8c8d;">🔗 Abrir Link Cel</a>` : ''}
-                    ${!esDepot ? `<button class="btn-manual" onclick="asignarCoordenadaManual(${punto.id})">⚙️ Ubicar</button>` : ''}
+                    ${!esDepot ? `<button class="btn-manual" onclick="asignarYEnviarCoordenadaManual(${punto.id})">⚙️ Ubicar</button>` : ''}
+                    ${!esDepot ? `<button class="btn-gps-vivo" onclick="capturarGpsEnVivoRepartidor(${punto.id})">📍 GPS Real</button>` : ''}
                     ${!esDepot ? `<button class="btn-navegar" style="background:#8e44ad;" onclick="mostrarDireccionAlert('${punto.nombre}', '${punto.direccion.replace(/'/g, "\\'")}')">📋 Ver Dir</button>` : ''}
-                    ${!esDepot && tieneUbicacion && !punto.entregado ? `<button class="btn-popup-entregar" style="margin-top:8px;" onclick="abrirModalPago(${punto.id})">✓ Entregar</button>` : ''}
+                    ${!!esDepot && tieneUbicacion && !punto.entregado ? `<button class="btn-popup-entregar" style="margin-top:8px;" onclick="abrirModalPago(${punto.id})">✓ Entregar</button>` : ''}
                 `;
                 contenedor.appendChild(li);
             });
@@ -358,7 +418,7 @@
             }
             rutaActualOrdenada = [...rutaOptima, ...clientes.filter(c => c.lat === null || c.lng === null)];
             trazarRutaPorCalles(rutaOptima); 
-            refrescarMapaYLista(); // Redibuja los pines del mapa para actualizar sus números secuenciales según el nuevo orden
+            refrescarMapaYLista(); 
         }
 
         function trazarRutaPorCalles(ruta) {
@@ -372,7 +432,7 @@
                 });
         }
 
-        window.onload = () => { refrescarMapaYLista(); };
+        window.onload = () => { importarDatosDesdeSheets(); };
     </script>
 </body>
 </html>
