@@ -1066,8 +1066,9 @@ function crearIconoRepartidorEnVivo() {
                 return;
             }
 
-            const validos = clientes.filter(c => c.lat !== null && c.lng !== null && !c.entregado);
-            const sinUbicacion = clientes.filter(c => c.lat === null || c.lng === null);
+            const clientesDelDia = diaActivoFiltrado === "todos" ? clientes : clientes.filter(c => c.dia === diaActivoFiltrado);
+            const validos = clientesDelDia.filter(c => c.lat !== null && c.lng !== null && !c.entregado);
+            const sinUbicacion = clientesDelDia.filter(c => c.lat === null || c.lng === null);
 
             if (validos.length === 0) { alert("No hay clientes pendientes con coordenadas."); return; }
 
