@@ -41,7 +41,30 @@
             background: #f8f9fa; border: 1px solid #e0e0e0; padding: 12px; border-radius: 5px; margin-bottom: 15px;
         }
         .control-rutas label { font-size: 13px; font-weight: bold; color: #333; display: block; margin-bottom: 5px; }
+        
+        .input-dinamico-rutas {
+            width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; margin-bottom: 10px; font-size: 14px; box-sizing: border-box;
+        }
         .control-rutas select { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; margin-bottom: 10px; font-size: 14px; }
+
+        /* SECTOR DE FILTRADO MULTICLIENTE */
+        .bloque-filtro-clientes {
+            background: #ebf3fc; border: 1px solid #cfe2fe; padding: 10px; border-radius: 5px; margin-bottom: 12px;
+        }
+        .buscador-cliente-input {
+            width: 100%; padding: 6px; box-sizing: border-box; border: 1px solid #bcd1ee; border-radius: 4px; font-size: 13px; margin-bottom: 6px;
+        }
+        .lista-checkbox-clientes {
+            max-height: 110px; overflow-y: auto; background: #fff; border: 1px solid #bcd1ee; border-radius: 4px; padding: 5px; margin-bottom: 6px;
+        }
+        .item-checkbox-cliente {
+            display: flex; align-items: center; font-size: 12px; color: #333; padding: 2px 0; cursor: pointer;
+        }
+        .item-checkbox-cliente input { margin-right: 6px; cursor: pointer; }
+        .btn-limpiar-filtros {
+            width: 100%; background: #718096; color: white; border: none; padding: 6px; font-size: 11px; font-weight: bold; border-radius: 4px; cursor: pointer; text-align: center;
+        }
+        .btn-limpiar-filtros:hover { background: #4a5568; }
 
         button.btn-opt {
             width: 100%; background: #27ae60; color: white; border: none; padding: 12px;
@@ -81,7 +104,6 @@
         .btn-gps-vivo { display: inline-block !important; background: #9f7aea !important; color: white !important; border: none !important; padding: 5px 10px !important; font-size: 11px !important; font-weight: bold !important; border-radius: 4px !important; cursor: pointer !important; text-align: center; }
         .btn-popup-entregar { display: inline-block !important; background: #2ecc71 !important; color: white !important; border: none !important; padding: 5px 10px !important; font-size: 11px !important; font-weight: bold !important; border-radius: 4px !important; cursor: pointer !important; text-align: center; }
 
-        /* GLOBOS DE INFORMACIÓN COMPACTOS (Popups) */
         .popup-contenedor-diseño { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-width: 200px; max-width: 240px; }
         .popup-titulo { font-size: 14px; font-weight: bold; margin: 0 0 4px 0; color: #1a202c; line-height: 1.2; }
         .popup-info-row-diseño { font-size: 12px; margin: 3px 0; color: #2d3748; line-height: 1.3; display: flex; align-items: flex-start; }
@@ -89,14 +111,12 @@
         .popup-info-row-diseño a { color: #2f80ed; font-weight: bold; text-decoration: none; border-bottom: 1px dashed #2f80ed; }
         .popup-select-ruta { width: 100%; padding: 4px; font-size: 11px; border-radius: 4px; margin-top: 4px; border: 1px solid #cbd5e0; background: #fff; font-weight: 500; color: #333; }
 
-        /* DISEÑO GENERAL DE PINS */
         .pin-contenedor { position: relative; width: 32px; height: 32px; }
         .pin-numero {
             position: absolute; top: 5px; left: 0; width: 32px; text-align: center;
             color: white; font-weight: bold; font-size: 11px; font-family: Arial, sans-serif; z-index: 10;
         }
         
-        /* PIN EXCLUSIVO DE TENATE (LETRA T) */
         .pin-letra-depot {
             position: absolute; top: 3px; left: 0; width: 34px; text-align: center;
             color: white; font-weight: 900; font-size: 15px; font-family: 'Segoe UI', Arial, sans-serif; z-index: 12;
@@ -122,6 +142,7 @@
         .modal-content { background: white; padding: 25px; border-radius: 8px; width: 300px; text-align: center; }
         .modal-content select { width: 100%; padding: 10px; margin: 15px 0; border-radius: 5px; border: 1px solid #ccc; font-size: 15px;}
         .modal-btn { background: #2ecc71; color: white; border: none; padding: 10px 20px; font-weight: bold; border-radius: 5px; cursor: pointer; width: 100%; }
+        .modal-btn:disabled { background: #95a5a6; cursor: not-allowed; }
         .modal-btn-cancel { background: #7f8c8d; margin-top: 8px; }
 
         #role-gate-modal {
@@ -158,12 +179,7 @@
             <div id="box-seleccion-ruta-driver" class="driver-select-box">
                 <label style="font-size:12px; font-weight:bold; color:#555; display:block; margin-bottom:5px;">Selecciona tu Ruta Asignada:</label>
                 <select id="select-ruta-repartidor-gate">
-                    <option value="0">Ruta 1</option>
-                    <option value="1">Ruta 2</option>
-                    <option value="2">Ruta 3</option>
-                    <option value="3">Ruta 4</option>
-                    <option value="4">Ruta 5</option>
-                </select>
+                    </select>
                 <button class="btn-role-choice btn-driver-choice" style="margin-bottom:0;" onclick="seleccionarRolSistema('repartidor')">Ingresar a mi Ruta</button>
             </div>
         </div>
@@ -182,25 +198,21 @@
             <div class="control-rutas">
                 <div id="adm-bloque-optimizacion">
                     <label for="num-repartidores">Cantidad de Rutas a Generar:</label>
-                    <select id="num-repartidores">
-                        <option value="1">🚗 1 Ruta Única</option>
-                        <option value="2">🚗🚗 2 Rutas Equitativas</option>
-                        <option value="3" selected>🚗🚗🚗 3 Rutas Equitativas</option>
-                        <option value="4">🚗×4 4 Rutas Equitativas</option>
-                        <option value="5">🚗×5 5 Rutas Equitativas</option>
-                    </select>
+                    <input type="number" id="num-repartidores" class="input-dinamico-rutas" min="1" max="100" value="3" placeholder="Ej: 3, 5, 12, 20...">
                     <button class="btn-opt" onclick="calcularMultiRutasEquitativas()">Dividir y Optimizar Rutas</button>
+                </div>
+
+                <div class="bloque-filtro-clientes">
+                    <label style="color:#1b62c4; font-weight:bold; font-size:12px; margin-bottom:4px; display:block;">🔍 Filtrar por Cliente(s):</label>
+                    <input type="text" id="buscador-cliente-texto" class="buscador-cliente-input" placeholder="Escribe para buscar..." oninput="filtrarNombresEnListaCheckbox()">
+                    <div id="lista-checkbox-clientes-contenedor" class="lista-checkbox-clientes">
+                        </div>
+                    <button class="btn-limpiar-filtros" onclick="limpiarFiltroClientesTotalmente()">🧼 Quitar Filtro en 1 Clic</button>
                 </div>
                 
                 <label id="lbl-filtro-vista" for="filtro-repartidor" style="margin-top:10px; color:#2f80ed;">👁️ Modo Vista Repartidor:</label>
                 <select id="filtro-repartidor" onchange="aplicarFiltroDeRutaMapeada(this.value)">
-                    <option value="todas">🌍 Ver Todas las Rutas (Administrador)</option>
-                    <option value="0">🚗 Ver Solo Ruta 1</option>
-                    <option value="1">🚗 Ver Solo Ruta 2</option>
-                    <option value="2">🚗 Ver Solo Ruta 3</option>
-                    <option value="3">🚗 Ver Solo Ruta 4</option>
-                    <option value="4">🚗 Ver Solo Ruta 5</option>
-                </select>
+                    </select>
                 
                 <button id="btn-reopt-individual" class="btn-reopt-single" onclick="reoptimizarRutaDesdeUbicacionActual()">⚡ Reoptimizar Mi Ruta (Desde mi GPS)</button>
             </div>
@@ -217,12 +229,14 @@
             <p id="modal-cliente-monto"></p>
             <label for="select-pago">Selecciona el Método de Pago:</label>
             <select id="select-pago">
+                <option id="option-placeholder-pago" value="" disabled selected hidden>Elige la forma de pago</option>
                 <option value="Efectivo">💵 Efectivo</option>
                 <option value="Tarjeta">💳 Tarjeta</option>
                 <option value="Transferencia">📲 Transferencia</option>
                 <option value="Pagado">✓ Pagado (Anticipado)</option>
+                <option value="No pagado">❌ No pagado</option>
             </select>
-            <button class="modal-btn" onclick="confirmarEntregaConPago()">Confirmar Entrega</button>
+            <button id="btn-confirmar-modal-pago" class="modal-btn" onclick="confirmarEntregaConPago()">Confirmar Entrega</button>
             <button class="modal-btn modal-btn-cancel" onclick="cerrarModalPago()">Cancelar</button>
         </div>
     </div>
@@ -244,8 +258,28 @@
         let ROL_ACTUAL = "admin"; 
         let marcadorMiGpsActual = null; 
 
-        const COLORES_RUTAS = ['#3498db', '#e67e22', '#9b59b6', '#1abc9c', '#f1c40f'];
+        let clientesSeleccionadosFiltro = [];
+
+        const COLORES_RUTAS_BASE = ['#3498db', '#e67e22', '#9b59b6', '#1abc9c', '#f1c40f', '#e74c3c', '#34495e', '#16a085', '#27ae60', '#d35400'];
         const COLOR_ENTREGADO = '#2ecc71'; 
+
+        function obtenerColorRuta(indice) {
+            if (indice < COLORES_RUTAS_BASE.length) {
+                return COLORES_RUTAS_BASE[indice];
+            }
+            let hash = 0;
+            let cadenaIndice = "RutaColor" + indice;
+            for (let i = 0; i < cadenaIndice.length; i++) {
+                hash = cadenaIndice.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            let color = '#';
+            for (let i = 0; i < 3; i++) {
+                let valor = (hash >> (i * 8)) & 0xFF;
+                if(valor > 220) valor = 180;
+                color += ('00' + valor.toString(16)).substr(-2);
+            }
+            return color;
+        }
 
         const map = L.map('map').setView([deposito.lat, deposito.lng], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
@@ -253,7 +287,10 @@
         map.on('contextmenu', function(e) {
             if (ROL_ACTUAL !== "admin") return; 
             deposito.lat = e.latlng.lat; deposito.lng = e.latlng.lng;
-            rutasEstructuradas.forEach(r => { if(r[0] && r[0].id === 0) r[0] = deposito; });
+            rutasEstructuradas.forEach(r => { 
+                if(r[0] && r[0].id === 0) r[0] = deposito; 
+                if(r[r.length - 1] && r[r.length - 1].id === 0) r[r.length - 1] = deposito;
+            });
             refrescarMapaYListasVisuales();
         });
 
@@ -266,9 +303,12 @@
                 const coordenadas = procesarCoordenadasDirectas(entrada);
                 if (coordenadas) {
                     deposito.lat = coordenadas.lat; deposito.lng = coordenadas.lng;
-                    rutasEstructuradas.forEach(r => { if(r[0] && r[0].id === 0) r[0] = deposito; });
+                    rutasEstructuradas.forEach(r => { 
+                        if(r[0] && r[0].id === 0) r[0] = deposito; 
+                        if(r[r.length - 1] && r[r.length - 1].id === 0) r[r.length - 1] = deposito;
+                    });
                     map.setView([deposito.lat, deposito.lng], 14);
-                    refresrarMapaYListasVisuales();
+                    refrescarMapaYListasVisuales();
                 }
             }
         }
@@ -337,6 +377,7 @@
                             if(match) { let n = parseInt(match[0]); if(n > maxRutaNum) maxRutaNum = n; }
                         });
 
+                        // Inicializar estructuras incluyendo Depósito al inicio y al final como cierre
                         rutasEstructuradas = Array.from({ length: maxRutaNum }, () => [deposito]);
                         clientes.forEach(c => {
                             let match = c.rutaAsignadaBase.match(/\d+/);
@@ -347,12 +388,16 @@
                                 rutasEstructuradas[0].push(c);
                             }
                         });
+                        // Colocar el candado de cierre en el punto de partida original
+                        rutasEstructuradas.forEach(r => r.push(deposito));
                     } else {
                         rutasOptimizadasActivas = false;
-                        rutasEstructuradas = [[deposito, ...clientes]];
+                        rutasEstructuradas = [[deposito, ...clientes, deposito]];
                     }
 
-                    refresrarMapaYListasVisuales();
+                    actualizarSelectoresDeRutaDinamicos();
+                    construirListaCheckboxClientes();
+                    refrescarMapaYListasVisuales();
                     if(rutasOptimizadasActivas) {
                         trazarLineasYCalcularTiemposOSRM();
                     }
@@ -360,9 +405,96 @@
                 .catch(err => alert("Error al conectar con la base de datos: " + err));
         }
 
+        function actualizarSelectoresDeRutaDinamicos() {
+            const cantRutas = rutasEstructuradas.length;
+
+            const selectFiltro = document.getElementById("filtro-repartidor");
+            const valorPrevioFiltro = selectFiltro.value || "todas";
+            selectFiltro.innerHTML = '<option value="todas">🌍 Ver Todas las Rutas (Administrador)</option>';
+            for (let r = 0; r < cantRutas; r++) {
+                selectFiltro.innerHTML += `<option value="${r}">🚗 Ver Solo Ruta ${r + 1}</option>`;
+            }
+            selectFiltro.value = valorPrevioFiltro;
+            if(!selectFiltro.value || parseInt(selectFiltro.value) >= cantRutas) selectFiltro.value = "todas";
+
+            const selectGate = document.getElementById("select-ruta-repartidor-gate");
+            selectGate.innerHTML = '';
+            for (let r = 0; r < cantRutas; r++) {
+                selectGate.innerHTML += `<option value="${r}">Ruta ${r + 1}</option>`;
+            }
+        }
+
+        function construirListaCheckboxClientes() {
+            const contenedor = document.getElementById("lista-checkbox-clientes-contenedor");
+            contenedor.innerHTML = "";
+            
+            let clientesOrdenados = [...clientes].sort((a, b) => a.nombre.localeCompare(b.nombre));
+            
+            clientesOrdenados.forEach(c => {
+                const label = document.createElement("label");
+                label.className = "item-checkbox-cliente";
+                label.setAttribute("data-nombre", c.nombre.toLowerCase());
+                
+                const checkbox = document.createElement("input");
+                checkbox.type = "checkbox";
+                checkbox.value = c.id;
+                checkbox.checked = clientesSeleccionadosFiltro.includes(c.id.toString());
+                
+                checkbox.onchange = function() {
+                    ejecutarAccionFiltroIndividual();
+                };
+                
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(`[#${c.id}] ${c.nombre}`));
+                contenedor.appendChild(label);
+            });
+        }
+
+        function filtrarNombresEnListaCheckbox() {
+            const texto = document.getElementById("buscador-cliente-texto").value.toLowerCase();
+            const items = document.querySelectorAll(".item-checkbox-cliente");
+            
+            items.forEach(item => {
+                const nombreCliente = item.getAttribute("data-nombre");
+                if (nombreCliente.includes(texto)) {
+                    item.style.display = "flex";
+                } else {
+                    item.style.display = "none";
+                }
+            });
+        }
+
+        function ejecutarAccionFiltroIndividual() {
+            const checkboxes = document.querySelectorAll("#lista-checkbox-clientes-contenedor input[type='checkbox']");
+            clientesSeleccionadosFiltro = [];
+            
+            checkboxes.forEach(box => {
+                if(box.checked) {
+                    clientesSeleccionadosFiltro.push(box.value);
+                }
+            });
+            
+            refrescarMapaYListasVisuales();
+            if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
+        }
+
+        function limpiarFiltroClientesTotalmente() {
+            document.getElementById("buscador-cliente-texto").value = "";
+            clientesSeleccionadosFiltro = [];
+            
+            const checkboxes = document.querySelectorAll("#lista-checkbox-clientes-contenedor input[type='checkbox']");
+            checkboxes.forEach(box => box.checked = false);
+            
+            const items = document.querySelectorAll(".item-checkbox-cliente");
+            items.forEach(item => item.style.display = "flex");
+            
+            refrescarMapaYListasVisuales();
+            if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
+        }
+
         function aplicarFiltroDeRutaMapeada(valor) {
             rutaActivaFiltrada = valor;
-            refresrarMapaYListasVisuales();
+            refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
 
@@ -374,19 +506,17 @@
                 method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ nombre: cl.nombre, accion: "actualizar_ruta_individual", ruta: nuevaRutaTexto })
             }).then(() => {
-                console.log(`Cliente ${cl.nombre} reasignado a ${nuevaRutaTexto}`);
                 importarDatosDesdeSheets();
             });
         }
 
-        function refresrarMapaYListasVisuales() {
+        function refrescarMapaYListasVisuales() {
             for (let id in marcadoresMapeados) map.removeLayer(marcadoresMapeados[id]);
             marcadoresMapeados = {};
             
             const contenedorListasHtml = document.getElementById('contenedor-de-rutas-lista');
             contenedorListasHtml.innerHTML = '';
 
-            // CAMBIO SOLICITADO: PIN de depósito clásico en color rojo con la letra T calada en blanco
             const htmlDepotIcon = `
                 <div class="pin-contenedor" style="width:34px; height:34px;">
                     <div class="pin-letra-depot">T</div>
@@ -415,11 +545,21 @@
                 coordenadasParaEncuadre.push([marcadorMiGpsActual.getLatLng().lat, marcadorMiGpsActual.getLatLng().lng]);
             }
 
+            const cantRutasTotales = rutasEstructuradas.length;
+
             rutasEstructuradas.forEach((listaRuta, indiceDeRuta) => {
                 if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== indiceDeRuta) return;
 
-                let colorFichaActual = COLORES_RUTAS[indiceDeRuta % COLORES_RUTAS.length];
-                let totalClientesRuta = listaRuta.filter(p => p.id !== 0).length;
+                let tieneClientesVisiblesEnRuta = true;
+                if (clientesSeleccionadosFiltro.length > 0) {
+                    tieneClientesVisiblesEnRuta = listaRuta.some(p => p.id !== 0 && clientesSeleccionadosFiltro.includes(p.id.toString()));
+                }
+                if (!tieneClientesVisiblesEnRuta) return;
+
+                let colorFichaActual = obtenerColorRuta(indiceDeRuta);
+                
+                let clientesFiltradosEnRuta = listaRuta.filter(p => p.id !== 0 && (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())));
+                let totalClientesRuta = clientesFiltradosEnRuta.length;
 
                 const tituloRuta = document.createElement('div');
                 tituloRuta.className = 'route-section-title';
@@ -435,7 +575,11 @@
                 let numeroPin = 0;
 
                 listaRuta.forEach((punto) => {
-                    if (punto.id === 0) return; 
+                    if (punto.id === 0) return; // Evitamos pintar marcadores extra para el depósito repetido
+
+                    if (clientesSeleccionadosFiltro.length > 0 && !clientesSeleccionadosFiltro.includes(punto.id.toString())) {
+                        return;
+                    }
 
                     numeroPin++;
                     let colorMarcadorFinal = punto.entregado ? COLOR_ENTREGADO : colorFichaActual;
@@ -451,7 +595,7 @@
                         let linkCelular = punto.urlOriginal && punto.urlOriginal.startsWith('http') ? punto.urlOriginal : '#';
 
                         let opcionesRutaHtml = '';
-                        for(let r=1; r<=5; r++) {
+                        for(let r = 1; r <= cantRutasTotales; r++) {
                             let selectAttr = (punto.rutaAsignadaBase === `Ruta ${r}`) ? 'selected' : '';
                             opcionesRutaHtml += `<option value="Ruta ${r}" ${selectAttr}>Ruta ${r}</option>`;
                         }
@@ -575,10 +719,27 @@
         }
 
         function abrirModalPago(id) {
-            const c = clientes.find(item => item.id === id); if (!c || c.entregado) return;
+            const c = clientes.find(item => item.id === id); if (!c) return;
             clienteEnProcesoId = id;
             document.getElementById("modal-cliente-name").innerText = c.nombre;
             document.getElementById("modal-cliente-monto").innerText = `Monto: $${c.monto}`;
+            
+            const selectPago = document.getElementById("select-pago");
+            const placeholderOption = document.getElementById("option-placeholder-pago");
+            const btnConfirmar = document.getElementById("btn-confirmar-modal-pago");
+
+            btnConfirmar.disabled = false;
+
+            if (c.metodoPago && c.metodoPago.toString().trim() === "Pagado") {
+                placeholderOption.innerText = "Pagado";
+                selectPago.value = "";
+                selectPago.disabled = true;
+            } else {
+                placeholderOption.innerText = "Elige la forma de pago";
+                selectPago.value = "";
+                selectPago.disabled = false;
+            }
+            
             document.getElementById("payment-modal").style.display = "flex";
             map.closePopup();
         }
@@ -587,8 +748,20 @@
 
         function confirmarEntregaConPago() {
             const cl = clientes.find(c => c.id === clienteEnProcesoId);
-            const m = document.getElementById("select-pago").value;
             if (!cl) return;
+            
+            const selectPago = document.getElementById("select-pago");
+            let m = selectPago.value;
+            
+            if (selectPago.disabled && cl.metodoPago === "Pagado") {
+                m = "Pagado";
+            }
+            
+            if (!m && !selectPago.disabled) { 
+                alert("Por favor, selecciona un método de pago válido antes de continuar."); 
+                return; 
+            }
+            
             cerrarModalPago();
 
             fetch(URL_GOOGLE_SCRIPT, {
@@ -597,7 +770,7 @@
             }).then(() => {
                 cl.entregado = true; 
                 cl.metodoPago = m;
-                refresrarMapaYListasVisuales(); 
+                refrescarMapaYListasVisuales(); 
                 if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
             });
         }
@@ -617,10 +790,11 @@
             rutasEstructuradas.forEach((listaRuta, indiceRuta) => {
                 if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== indiceRuta) return;
 
-                let puntosValidos = listaRuta.filter(p => p.id === 0 || (p.lat !== null && p.lng !== null && !p.entregado));
+                // Para trazar la línea física, filtramos puntos válidos manteniendo el orden estructurado (el cual ya incluye inicio y fin en depósito)
+                let puntosValidos = listaRuta.filter(p => p.id === 0 || (p.lat !== null && p.lng !== null && !p.entregado && (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString()))));
                 if (puntosValidos.length < 2) return;
 
-                let colorRuta = COLORES_RUTAS[indiceRuta % COLORES_RUTAS.length];
+                let colorRuta = obtenerColorRuta(indiceRuta);
                 let coordString = puntosValidos.map(p => `${p.lng},${p.lat}`).join(';');
                 let urlOsim = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
 
@@ -636,7 +810,9 @@
                             tiemposEstimadosRutas[indiceRuta] = mins > 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins} mins`;
                             
                             let titulos = document.getElementsByClassName('route-section-title');
-                            let totalClientesRuta = listaRuta.filter(p => p.id !== 0).length;
+                            let clientesFiltradosEnRuta = listaRuta.filter(p => p.id !== 0 && (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())));
+                            let totalClientesRuta = clientesFiltradosEnRuta.length;
+                            
                             for(let t of titulos) {
                                 if(t.innerText.startsWith(`Ruta ${indiceRuta + 1}`)) {
                                     t.innerText = `Ruta ${indiceRuta + 1} (${totalClientesRuta} clientes) | ⏱️ ${tiemposEstimadosRutas[indiceRuta]}`;
@@ -671,13 +847,14 @@
                         return;
                     }
 
+                    // Se optimiza partiendo desde el GPS actual del repartidor
                     let subRutaReoptimizada = optimizarOrdenInternoVecino(pendientes, gpsRepartidor);
-                    subRutaReoptimizada.shift(); 
 
-                    rutasEstructuradas[idxRuta] = [deposito, ...subRutaReoptimizada, ...estaticos.filter(p => p.id !== 0)];
+                    // Al reconstruir para la vista del repartidor: Punto Inicial (deposito), Recorrido optimizado (con el candado de cierre integrado), y los estáticos / entregados al final.
+                    rutasEstructuradas[idxRuta] = [deposito, ...subRutaReoptimizada.slice(1), ...estaticos.filter(p => p.id !== 0)];
 
-                    alert("¡Ruta reoptimizada con éxito según tu posición actual!");
-                    refresrarMapaYListasVisuales();
+                    alert("¡Ruta reoptimizada con éxito según tu posición actual incorporando el regreso a El Tenate!");
+                    refrescarMapaYListasVisuales();
                     trazarLineasYCalcularTiemposOSRM();
 
                 }, () => {
@@ -688,34 +865,47 @@
 
         function calcularMultiRutasEquitativas() {
             if (ROL_ACTUAL !== "admin") return;
-            const numRutas = parseInt(document.getElementById("num-repartidores").value);
+            
+            let numRutasInput = parseInt(document.getElementById("num-repartidores").value);
+            if (isNaN(numRutasInput) || numRutasInput < 1) {
+                alert("Por favor introduce un número de rutas válido (mayor o igual a 1).");
+                return;
+            }
+
             const validos = clientes.filter(c => c.lat !== null && c.lng !== null && !c.entregado);
             const sinUbicacion = clientes.filter(c => c.lat === null || c.lng === null);
 
             if (validos.length === 0) { alert("No hay clientes pendientes con coordenadas."); return; }
 
+            if (numRutasInput > validos.length) {
+                numRutasInput = validos.length;
+                document.getElementById("num-repartidores").value = numRutasInput;
+                alert(`Ajustado automáticamente a ${numRutasInput} rutas ya que solo hay esa cantidad de clientes con coordenadas pendientes.`);
+            }
+
             rutasOptimizadasActivas = true; 
             tiemposEstimadosRutas = {}; 
-            const capacidadBase = Math.floor(validos.length / numRutas);
-            let residuos = validos.length % numRutas;
+            
+            const capacidadBase = Math.floor(validos.length / numRutasInput);
+            let residuos = validos.length % numRutasInput;
             
             let limitePorRuta = [];
-            for (let r = 0; r < numRutas; r++) {
+            for (let r = 0; r < numRutasInput; r++) {
                 limitePorRuta.push(capacidadBase + (residuos > 0 ? 1 : 0));
                 residuos--;
             }
 
             let centroides = [];
-            for (let i = 0; i < numRutas; i++) {
-                let angulo = (i * 2 * Math.PI) / numRutas;
+            for (let i = 0; i < numRutasInput; i++) {
+                let angulo = (i * 2 * Math.PI) / numRutasInput;
                 centroides.push({ lat: deposito.lat + 0.01 * Math.sin(angulo), lng: deposito.lng + 0.01 * Math.cos(angulo) });
             }
 
-            let gruposPuntos = Array.from({ length: numRutas }, () => []);
+            let gruposPuntos = Array.from({ length: numRutasInput }, () => []);
             let puntosDisponibles = [...validos];
 
             while (puntosDisponibles.length > 0) {
-                for (let r = 0; r < numRutas; r++) {
+                for (let r = 0; r < numRutasInput; r++) {
                     if (gruposPuntos[r].length >= limitePorRuta[r] || puntosDisponibles.length === 0) continue;
 
                     let minDist = Infinity; let mejorIndice = -1;
@@ -737,6 +927,7 @@
             let listaAsignacionesPayload = []; 
 
             gruposPuntos.forEach((puntosDelGrupo, indiceDeRuta) => {
+                // Genera la secuencia optimizada que abre y cierra estrictamente en "El Tenate"
                 let rutaOrdenada = optimizarOrdenInternoVecino(puntosDelGrupo, deposito);
                 rutasEstructuradas.push(rutaOrdenada);
 
@@ -746,13 +937,17 @@
             });
 
             if (sinUbicacion.length > 0) {
-                rutasEstructuradas[rutasEstructuradas.length - 1].push(...sinUbicacion);
+                // Si hay clientes sin ubicación, se colocan antes del candado final del depósito
+                let ultimaRuta = rutasEstructuradas[rutasEstructuradas.length - 1];
+                ultimaRuta.splice(ultimaRuta.length - 1, 0, ...sinUbicacion);
+                
                 sinUbicacion.forEach(p => {
                     listaAsignacionesPayload.push({ nombre: p.nombre, ruta: `Ruta ${rutasEstructuradas.length}` });
                 });
             }
 
-            refresrarMapaYListasVisuales();
+            actualizarSelectoresDeRutaDinamicos();
+            refrescarMapaYListasVisuales();
             trazarLineasYCalcularTiemposOSRM();
 
             fetch(URL_GOOGLE_SCRIPT, {
@@ -765,6 +960,7 @@
             }).catch(err => console.error("Error al guardar rutas de manera masiva: ", err));
         }
 
+        // AJUSTE CRUCIAL: El algoritmo calcula los clientes y añade de forma fija el retorno al punto de origen
         function optimizarOrdenInternoVecino(puntosAListado, puntoDeArranque) {
             let subRutaOptima = [puntoDeArranque];
             let noVisitados = [...puntosAListado];
@@ -783,6 +979,8 @@
                     noVisitados.splice(indiceMasCercano, 1);
                 }
             }
+            // Agregamos forzosamente "El Tenate" (deposito) al final de la secuencia para cerrar el circuito completo
+            subRutaOptima.push(deposito);
             return subRutaOptima;
         }
 
@@ -823,7 +1021,8 @@
                 btnReopt.style.display = "block";
                 rutaActivaFiltrada = rutaSeleccionada;
             }
-            importarDatosDesdeSheets();
+            refrescarMapaYListasVisuales();
+            if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
 
         function regresarAPantallaDeRoles() {
@@ -831,7 +1030,11 @@
             document.getElementById("role-gate-modal").style.display = "flex";
             limpiarTodoElMapa();
             document.getElementById('contenedor-de-rutas-lista').innerHTML = '';
+            clientesSeleccionadosFiltro = [];
+            document.getElementById("buscador-cliente-texto").value = "";
         }
+
+        importarDatosDesdeSheets();
     </script>
 </body>
 </html>
