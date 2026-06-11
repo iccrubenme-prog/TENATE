@@ -167,6 +167,21 @@
             margin-top: 15px; border-top: 1px solid #eee; padding-top: 15px; display: none;
         }
         .driver-select-box select { width: 100%; padding: 10px; font-size: 14px; border-radius: 5px; margin-bottom: 10px; }
+
+
+	.notas-cliente {
+    background-color: #fff3cd; /* Amarillo tenue */
+    color: #856404;           /* Texto oscuro para contraste */
+    padding: 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    margin: 5px 0;
+    border-left: 3px solid #ffeeba;
+    display: block;
+    line-height: 1.3;
+}
+
+
     </style>
 </head>
 <body>
@@ -210,6 +225,11 @@
                     <button class="btn-limpiar-filtros" onclick="limpiarFiltroClientesTotalmente()">🧼 Quitar Filtro en 1 Clic</button>
                 </div>
                 
+                <label style="margin-top:10px; color:#27ae60; font-size:13px; font-weight:bold; display:block;">📅 Filtrar por Día:</label>
+                <select id="filtro-dia" onchange="aplicarFiltroDia(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
+                    <option value="todos">📋 Todos los días</option>
+                </select>
+
                 <label id="lbl-filtro-vista" for="filtro-repartidor" style="margin-top:10px; color:#2f80ed;">👁️ Modo Vista Repartidor:</label>
                 <select id="filtro-repartidor" onchange="aplicarFiltroDeRutaMapeada(this.value)">
                     </select>
@@ -363,7 +383,10 @@
                             metodoPago: item.metodoPago, 
                             telefono: item["Teléfono"] || "", 
                             direccion: item["Dirección"] || "", 
-                            rutaAsignadaBase: item.ruta || "" 
+                            notas: item.notas || "",
+                            rutaAsignadaBase: item.ruta || "",
+                            quien: item.quien || "",
+                            dia: item.dia || ""
                         });
                     });
 
@@ -396,6 +419,7 @@
                     }
 
                     actualizarSelectoresDeRutaDinamicos();
+                    poblarFiltroDia();
                     construirListaCheckboxClientes();
                     refrescarMapaYListasVisuales();
                     if(rutasOptimizadasActivas) {
@@ -406,22 +430,54 @@
         }
 
         function actualizarSelectoresDeRutaDinamicos() {
-            const cantRutas = rutasEstructuradas.length;
+    const cantRutas = rutasEstructuradas.length;
 
-            const selectFiltro = document.getElementById("filtro-repartidor");
-            const valorPrevioFiltro = selectFiltro.value || "todas";
-            selectFiltro.innerHTML = '<option value="todas">🌍 Ver Todas las Rutas (Administrador)</option>';
-            for (let r = 0; r < cantRutas; r++) {
-                selectFiltro.innerHTML += `<option value="${r}">🚗 Ver Solo Ruta ${r + 1}</option>`;
+    // Construir mapa: índice de ruta (0-based) → nombre del repartidor (quien)
+    const nombresPorRuta = {};
+    clientes.forEach(c => {
+        if (c.rutaAsignadaBase && c.quien) {
+            const match = c.rutaAsignadaBase.match(/\d+/);
+            if (match) {
+                const idx = parseInt(match[0]) - 1;
+                if (!(idx in nombresPorRuta)) nombresPorRuta[idx] = c.quien;
             }
-            selectFiltro.value = valorPrevioFiltro;
-            if(!selectFiltro.value || parseInt(selectFiltro.value) >= cantRutas) selectFiltro.value = "todas";
+        }
+    });
 
-            const selectGate = document.getElementById("select-ruta-repartidor-gate");
-            selectGate.innerHTML = '';
-            for (let r = 0; r < cantRutas; r++) {
-                selectGate.innerHTML += `<option value="${r}">Ruta ${r + 1}</option>`;
-            }
+    const selectFiltro = document.getElementById("filtro-repartidor");
+    const valorPrevioFiltro = selectFiltro.value || "todas";
+    selectFiltro.innerHTML = '<option value="todas">🌍 Ver Todas las Rutas (Administrador)</option>';
+    for (let r = 0; r < cantRutas; r++) {
+        const etiqueta = nombresPorRuta[r] ? `Ruta ${nombresPorRuta[r]}` : `Ruta ${r + 1}`;
+        selectFiltro.innerHTML += `<option value="${r}">🚗 ${etiqueta}</option>`;
+    }
+    selectFiltro.value = valorPrevioFiltro;
+    if(!selectFiltro.value || parseInt(selectFiltro.value) >= cantRutas) selectFiltro.value = "todas";
+
+    const selectGate = document.getElementById("select-ruta-repartidor-gate");
+    selectGate.innerHTML = '';
+    for (let r = 0; r < cantRutas; r++) {
+        const etiqueta = nombresPorRuta[r] ? `Ruta ${nombresPorRuta[r]}` : `Ruta ${r + 1}`;
+        selectGate.innerHTML += `<option value="${r}">${etiqueta}</option>`;
+    }
+}
+
+        function poblarFiltroDia() {
+            const select = document.getElementById("filtro-dia");
+            if (!select) return;
+            const diasUnicos = [...new Set(clientes.map(c => c.dia).filter(d => d && d.trim() !== ""))].sort();
+            select.innerHTML = '<option value="todos">📋 Todos los días</option>';
+            diasUnicos.forEach(d => {
+                select.innerHTML += `<option value="${d}">${d}</option>`;
+            });
+        }
+
+        let diaActivoFiltrado = "todos";
+
+        function aplicarFiltroDia(dia) {
+            diaActivoFiltrado = dia;
+            refrescarMapaYListasVisuales();
+            if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
 
         function construirListaCheckboxClientes() {
@@ -510,165 +566,291 @@
             });
         }
 
-        function refrescarMapaYListasVisuales() {
+       function refrescarMapaYListasVisuales() {
+
             for (let id in marcadoresMapeados) map.removeLayer(marcadoresMapeados[id]);
+
             marcadoresMapeados = {};
+
             
+
             const contenedorListasHtml = document.getElementById('contenedor-de-rutas-lista');
+
             contenedorListasHtml.innerHTML = '';
 
+
+
             const htmlDepotIcon = `
+
                 <div class="pin-contenedor" style="width:34px; height:34px;">
+
                     <div class="pin-letra-depot">T</div>
+
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="34" height="34">
+
                         <path fill="#e74c3c" stroke="#c0392b" stroke-width="1" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+
                         <circle cx="12" cy="9" r="5" fill="#e74c3c" />
+
                     </svg>
+
                 </div>
+
             `;
+
             
+
             const depotIcon = L.divIcon({ 
+
                 className: 'svg-icon-marcador', 
+
                 html: htmlDepotIcon, 
+
                 iconSize: [34, 34], 
+
                 iconAnchor: [17, 34], 
+
                 popupAnchor: [0, -34] 
+
             });
 
+
+
             const marcadorDeposito = L.marker([deposito.lat, deposito.lng], {
+
                 icon: depotIcon
+
             }).addTo(map).bindPopup(`<div style="font-family:'Segoe UI',sans-serif;font-size:12px;"><b>${deposito.nombre}</b><br>Centro de Distribución Central</div>`);
+
             marcadoresMapeados[0] = marcadorDeposito;
 
+
+
             let coordenadasParaEncuadre = [[deposito.lat, deposito.lng]];
+
             if (marcadorMiGpsActual) {
+
                 coordenadasParaEncuadre.push([marcadorMiGpsActual.getLatLng().lat, marcadorMiGpsActual.getLatLng().lng]);
+
             }
+
+
 
             const cantRutasTotales = rutasEstructuradas.length;
 
+
+
             rutasEstructuradas.forEach((listaRuta, indiceDeRuta) => {
+
                 if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== indiceDeRuta) return;
 
-                let tieneClientesVisiblesEnRuta = true;
-                if (clientesSeleccionadosFiltro.length > 0) {
-                    tieneClientesVisiblesEnRuta = listaRuta.some(p => p.id !== 0 && clientesSeleccionadosFiltro.includes(p.id.toString()));
-                }
-                if (!tieneClientesVisiblesEnRuta) return;
 
-                let colorFichaActual = obtenerColorRuta(indiceDeRuta);
-                
-                let clientesFiltradosEnRuta = listaRuta.filter(p => p.id !== 0 && (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())));
+
+                let clientesFiltradosEnRuta = listaRuta.filter(p =>
+                    p.id !== 0 &&
+                    (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())) &&
+                    (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                );
                 let totalClientesRuta = clientesFiltradosEnRuta.length;
 
+                if (totalClientesRuta === 0) return;
+
+                let colorFichaActual = obtenerColorRuta(indiceDeRuta);
+
+
+
                 const tituloRuta = document.createElement('div');
+
                 tituloRuta.className = 'route-section-title';
+
                 tituloRuta.style.backgroundColor = colorFichaActual;
+
                 
+
                 let textoTiempo = tiemposEstimadosRutas[indiceDeRuta] ? ` | ⏱️ ${tiemposEstimadosRutas[indiceDeRuta]}` : '';
+
                 tituloRuta.innerText = `Ruta ${indiceDeRuta + 1} (${totalClientesRuta} clientes)${textoTiempo}`;
+
                 contenedorListasHtml.appendChild(tituloRuta);
 
+
+
                 const ul = document.createElement('ul');
+
                 ul.className = 'route-list';
+
+
 
                 let numeroPin = 0;
 
+
+
                 listaRuta.forEach((punto) => {
+
                     if (punto.id === 0) return; // Evitamos pintar marcadores extra para el depósito repetido
 
+
+
                     if (clientesSeleccionadosFiltro.length > 0 && !clientesSeleccionadosFiltro.includes(punto.id.toString())) {
+
                         return;
+
                     }
+
+                    if (diaActivoFiltrado !== "todos" && punto.dia !== diaActivoFiltrado) return;
+
+
 
                     numeroPin++;
+
                     let colorMarcadorFinal = punto.entregado ? COLOR_ENTREGADO : colorFichaActual;
 
-                    if (punto.lat !== null && punto.lng !== null) {
+
+
+                    
+let notasPopup = "";
+if (punto.notas && punto.notas.trim() !== "") {
+    notasPopup = `<div class="popup-info-row-diseño" style="background:#fff3cd; padding:4px; border-left:3px solid #ffeeba; margin-top:5px; font-size:12px;">📝 <strong>Notas:</strong> ${punto.notas}</div>`;
+}
+
+
+		
+		if (punto.lat !== null && punto.lng !== null) {
+
                         coordenadasParaEncuadre.push([punto.lat, punto.lng]);
 
+
+
                         const marcador = L.marker([punto.lat, punto.lng], {
+
                             icon: crearIconoSvgConNumero(colorMarcadorFinal, numeroPin)
+
                         }).addTo(map);
 
+
+
                         let linkNavegarGps = obtenerEnlaceMaps(punto.lat, punto.lng);
+
                         let linkCelular = punto.urlOriginal && punto.urlOriginal.startsWith('http') ? punto.urlOriginal : '#';
 
+
+
                         let opcionesRutaHtml = '';
+
                         for(let r = 1; r <= cantRutasTotales; r++) {
+
                             let selectAttr = (punto.rutaAsignadaBase === `Ruta ${r}`) ? 'selected' : '';
+
                             opcionesRutaHtml += `<option value="Ruta ${r}" ${selectAttr}>Ruta ${r}</option>`;
+
                         }
 
+
+
                         let popupHtml = `
+
                             <div class="popup-contenedor-diseño">
+
                                 <h4 class="popup-titulo">[#${punto.id}] ${punto.nombre}</h4>
-                                <div class="popup-info-row-diseño">💵 <strong>Cobro:</strong>  $${punto.monto}</div>
+
+        			${notasPopup} <div class="popup-info-row-diseño">💵 <strong>Cobro:</strong> $${parseFloat(punto.monto).toFixed(2)}</div>
+
+                               
+
                                 <div class="popup-info-row-diseño">
+
                                     📋 <strong>Status:</strong>  ${punto.entregado ? '<span style="color:#2ecc71; font-weight:bold;">✓ Entregado ('+punto.metodoPago+')</span>' : '<span style="color:#e74c3c; font-weight:bold;">❌ Pendiente</span>'}
+
                                 </div>
+
                                 ${punto.telefono ? `<div class="popup-info-row-diseño">📞 <strong>Tel:</strong>  <a href="tel:${punto.telefono}">${punto.telefono}</a></div>` : ''}
+
                                 ${punto.direccion ? `<div class="popup-info-row-diseño">🏠 <strong>Dir:</strong>  ${punto.direccion}</div>` : ''}
+
                                 
+
                                 ${ROL_ACTUAL === 'admin' ? `
+
                                     <div class="popup-info-row-diseño" style="margin-top:6px; border-top:1px dashed #ccc; padding-top:4px; flex-direction:column; align-items:stretch;">
+
                                         <strong>Cambiar Asignación:</strong>
+
                                         <select class="popup-select-ruta" onchange="cambiarRutaClienteDesdeMapa(${punto.id}, this.value)">
+
                                             ${opcionesRutaHtml}
+
                                         </select>
+
                                     </div>
+
                                 ` : ''}
 
+
+
                                 <div class="contenedor-botones-ficha" style="margin-top: 8px;">
+
                                     <a href="${linkNavegarGps}" target="_blank" class="btn-navegar" style="flex:1;">GPS</a>
+
                                     <a href="${linkCelular}" target="_blank" class="btn-link-cel" style="flex:1;" ${linkCelular === '#' ? 'onclick="alert(\'No hay link válido\'); return false;"' : ''}>Abrir Link Cel</a>
+
                                 </div>
+
                                 <div class="contenedor-botones-ficha" style="margin-top: 4px;">
+
                                     <button class="btn-gps-vivo" style="flex:1;" onclick="capturarGpsEnVivoRepartidor(${punto.id})">📍 GPS Real</button>
+
                                     ${!punto.entregado ? `<button class="btn-popup-entregar" style="flex:1;" onclick="abrirModalPago(${punto.id})">✓ Entregar</button>` : ''}
+
                                 </div>
+
                             </div>
+
                         `;
+
                         marcador.bindPopup(popupHtml);
+
                         marcadoresMapeados[punto.id] = marcador;
+
                     }
 
-                    const li = document.createElement('li');
-                    li.className = `route-item ${punto.lat === null ? 'error-coord' : ''} ${punto.entregado ? 'entregado' : ''}`;
-                    li.onclick = function() { enfocarYResaltarCliente(punto.id, punto.lat, punto.lng); };
 
-                    li.innerHTML = `
-                        <span class="badge" style="background-color: ${colorMarcadorFinal}">${punto.lat === null ? '•' : numeroPin}</span>
-                        <strong style="font-size: 15px; color:#000;">[#${punto.id}] ${punto.nombre}</strong><br>
-                        <span class="monto-tag">Cobro: $${punto.monto} ${punto.entregado ? '✅ ('+punto.metodoPago+')' : ''}</span>
-                        
-                        ${punto.telefono ? `<div class="info-adicional">📞 <strong>Tel:</strong> <a href="tel:${punto.telefono}" onclick="event.stopPropagation();">${punto.telefono}</a> | <a href="https://wa.me/${punto.telefono.toString().replace(/\s+/g, '')}" target="_blank" onclick="event.stopPropagation();" style="color:#25D366; font-weight:bold;">WhatsApp</a></div>` : ''}
-                        ${punto.direccion ? `<div class="info-adicional">🏠 <strong>Dir:</strong> ${punto.direccion}</div>` : ''}
-                        
-                        <div class="contenedor-botones-ficha" onclick="event.stopPropagation();">
-                            ${punto.lat !== null ? `<a href="${obtenerEnlaceMaps(punto.lat, punto.lng)}" target="_blank" class="btn-navegar">GPS</a>` : ''}
-                            <a href="${punto.urlOriginal && punto.urlOriginal.startsWith('http') ? punto.urlOriginal : 'javascript:void(0);'}" 
-                               target="_blank" 
-                               onclick="event.stopPropagation(); ${!punto.urlOriginal ? 'alert(\'No hay link de ubicación válido\');' : ''}"
-                               class="btn-link-cel" >
-                               🔗 Abrir Link Cel
-                            </a>
-                            <button class="btn-manual" onclick="event.stopPropagation(); asignarYEnviarCoordenadaManual(${punto.id})">🔧 Ubicar</button>
-                        </div>
-                        <div class="contenedor-botones-ficha" style="margin-top:5px;" onclick="event.stopPropagation();">
-                            <button class="btn-gps-vivo" onclick="capturarGpsEnVivoRepartidor(${punto.id})">📍 GPS Real</button>
-                            ${!punto.entregado ? `<button class="btn-popup-entregar" onclick="abrirModalPago(${punto.id})">✓ Entregar</button>` : ''}
-                        </div>
-                    `;
-                    ul.appendChild(li);
-                });
-                contenedorListasHtml.appendChild(ul);
-            });
-
-            if (coordenadasParaEncuadre.length > 1) {
-                map.fitBounds(coordenadasParaEncuadre, { padding: [40, 40] });
+		// --- AQUÍ ESTÁ LA LÓGICA DE LAS NOTAS ---
+            let htmlNotas = "";
+            if (punto.notas && punto.notas.toString().trim() !== "") {
+                htmlNotas = `<span class="notas-cliente">📝 ${punto.notas}</span>`;
             }
-        }
+
+            const li = document.createElement('li');
+            li.className = `route-item ${punto.lat === null ? 'error-coord' : ''} ${punto.entregado ? 'entregado' : ''}`;
+            li.onclick = function() { enfocarYResaltarCliente(punto.id, punto.lat, punto.lng); };
+
+            li.innerHTML = `
+                <span class="badge" style="background-color: ${colorMarcadorFinal}">${punto.lat === null ? '•' : numeroPin}</span>
+                <strong style="font-size: 15px; color:#000;">[#${punto.id}] ${punto.nombre}</strong><br>
+                ${htmlNotas}
+                <span class="monto-tag">Cobro: $${parseFloat(punto.monto).toFixed(2)} ${punto.entregado ? '✅ ('+punto.metodoPago+')' : ''}</span>
+                ${punto.telefono ? `<div class="info-adicional">📞 <strong>Tel:</strong> <a href="tel:${punto.telefono}" onclick="event.stopPropagation();">${punto.telefono}</a> | <a href="https://wa.me/${punto.telefono.toString().replace(/\s+/g, '')}" target="_blank" onclick="event.stopPropagation();" style="color:#25D366; font-weight:bold;">WhatsApp</a></div>` : ''}
+                ${punto.direccion ? `<div class="info-adicional">🏠 <strong>Dir:</strong> ${punto.direccion}</div>` : ''}
+                <div class="contenedor-botones-ficha" onclick="event.stopPropagation();">
+                    ${punto.lat !== null ? `<a href="${obtenerEnlaceMaps(punto.lat, punto.lng)}" target="_blank" class="btn-navegar">GPS</a>` : ''}
+                    <a href="${punto.urlOriginal && punto.urlOriginal.startsWith('http') ? punto.urlOriginal : 'javascript:void(0);'}" target="_blank" onclick="event.stopPropagation(); ${!punto.urlOriginal ? 'alert(\'No hay link de ubicación válido\');' : ''}" class="btn-link-cel" >🔗 Abrir Link Cel</a>
+                    <button class="btn-manual" onclick="event.stopPropagation(); asignarYEnviarCoordenadaManual(${punto.id})">🔧 Ubicar</button>
+                </div>
+                <div class="contenedor-botones-ficha" style="margin-top:5px;" onclick="event.stopPropagation();">
+                    <button class="btn-gps-vivo" onclick="capturarGpsEnVivoRepartidor(${punto.id})">📍 GPS Real</button>
+                    ${!punto.entregado ? `<button class="btn-popup-entregar" onclick="abrirModalPago(${punto.id})">✓ Entregar</button>` : ''}
+                </div>
+            `;
+            ul.appendChild(li);
+        });
+        contenedorListasHtml.appendChild(ul);
+    });
+
+    if (coordenadasParaEncuadre.length > 1) {
+        map.fitBounds(coordenadasParaEncuadre, { padding: [40, 40] });
+    }
+}
+
 
         function crearIconoSvgConNumero(color, numero) {
             const htmlCompleto = `
@@ -682,7 +864,9 @@
             return L.divIcon({ className: 'svg-icon-marcador', html: htmlCompleto, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -32] });
         }
 
-        function crearIconoRepartidorEnVivo() {
+        
+
+function crearIconoRepartidorEnVivo() {
             const htmlCompleto = `
                 <div class="pin-contenedor">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="36" height="36">
@@ -790,8 +974,14 @@
             rutasEstructuradas.forEach((listaRuta, indiceRuta) => {
                 if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== indiceRuta) return;
 
-                // Para trazar la línea física, filtramos puntos válidos manteniendo el orden estructurado (el cual ya incluye inicio y fin en depósito)
-                let puntosValidos = listaRuta.filter(p => p.id === 0 || (p.lat !== null && p.lng !== null && !p.entregado && (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString()))));
+                // Para trazar la línea física, filtramos puntos válidos aplicando también el filtro de día
+                let puntosValidos = listaRuta.filter(p => 
+                    p.id === 0 || (
+                        p.lat !== null && p.lng !== null && !p.entregado &&
+                        (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())) &&
+                        (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                    )
+                );
                 if (puntosValidos.length < 2) return;
 
                 let colorRuta = obtenerColorRuta(indiceRuta);
@@ -810,7 +1000,11 @@
                             tiemposEstimadosRutas[indiceRuta] = mins > 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins} mins`;
                             
                             let titulos = document.getElementsByClassName('route-section-title');
-                            let clientesFiltradosEnRuta = listaRuta.filter(p => p.id !== 0 && (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())));
+                            let clientesFiltradosEnRuta = listaRuta.filter(p =>
+                                p.id !== 0 &&
+                                (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())) &&
+                                (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                            );
                             let totalClientesRuta = clientesFiltradosEnRuta.length;
                             
                             for(let t of titulos) {
