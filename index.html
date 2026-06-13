@@ -667,9 +667,11 @@
 
                 
 
+                let totalCobroRuta = clientesFiltradosEnRuta.reduce((sum, p) => sum + (parseFloat(p.monto) || 0), 0);
+
                 let textoTiempo = tiemposEstimadosRutas[indiceDeRuta] ? ` | ⏱️ ${tiemposEstimadosRutas[indiceDeRuta]}` : '';
 
-                tituloRuta.innerText = `Ruta ${indiceDeRuta + 1} (${totalClientesRuta} clientes)${textoTiempo}`;
+                tituloRuta.innerText = `Ruta ${indiceDeRuta + 1} (${totalClientesRuta} clientes)${textoTiempo} | | 💰 $${totalCobroRuta.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
 
                 contenedorListasHtml.appendChild(tituloRuta);
 
@@ -1006,10 +1008,11 @@ function crearIconoRepartidorEnVivo() {
                                 (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
                             );
                             let totalClientesRuta = clientesFiltradosEnRuta.length;
-                            
+                            let totalCobroRuta = clientesFiltradosEnRuta.reduce((sum, p) => sum + (parseFloat(p.monto) || 0), 0);
+
                             for(let t of titulos) {
                                 if(t.innerText.startsWith(`Ruta ${indiceRuta + 1}`)) {
-                                    t.innerText = `Ruta ${indiceRuta + 1} (${totalClientesRuta} clientes) | ⏱️ ${tiemposEstimadosRutas[indiceRuta]}`;
+                                    t.innerText = `Ruta ${indiceRuta + 1} (${totalClientesRuta} clientes) | ⏱️ ${tiemposEstimadosRutas[indiceRuta]} | 💰 $${totalCobroRuta.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                                 }
                             }
                         }
