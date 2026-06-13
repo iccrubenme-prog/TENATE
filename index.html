@@ -831,7 +831,7 @@ if (punto.notas && punto.notas.trim() !== "") {
                 <strong style="font-size: 15px; color:#000;">[#${punto.id}] ${punto.nombre}</strong><br>
                 ${htmlNotas}
                 <span class="monto-tag">Cobro: $${parseFloat(punto.monto).toFixed(2)} ${punto.entregado ? '✅ ('+punto.metodoPago+')' : ''}</span>
-                ${punto.telefono ? `<div class="info-adicional">📞 <strong>Tel:</strong> <a href="tel:${punto.telefono}" onclick="event.stopPropagation();">${punto.telefono}</a> | <a href="https://wa.me/${punto.telefono.toString().replace(/\s+/g, '')}?text=${encodeURIComponent('Hola que tal, le escribo del Tenate, ya estoy afuera de su domicilio')}" target="_blank" onclick="event.stopPropagation();" style="color:#25D366; font-weight:bold;">WhatsApp</a></div>` : ''}
+                ${punto.telefono ? `<div class="info-adicional">📞 <strong>Tel:</strong> <a href="tel:${punto.telefono}" onclick="event.stopPropagation();">${punto.telefono}</a> | <a href="https://api.whatsapp.com/send?phone=${(() => { let n = punto.telefono.toString().replace(/\D/g, ''); return n.length === 10 ? '52' + n : n; })()}&text=${encodeURIComponent('Hola que tal, le escribo del Tenate, ya estoy afuera de su domicilio')}" target="_blank" onclick="event.stopPropagation();" style="color:#25D366; font-weight:bold;">WhatsApp</a></div>` : ''}
                 ${punto.direccion ? `<div class="info-adicional">🏠 <strong>Dir:</strong> ${punto.direccion}</div>` : ''}
                 <div class="contenedor-botones-ficha" onclick="event.stopPropagation();">
                     ${punto.lat !== null ? `<a href="${obtenerEnlaceMaps(punto.lat, punto.lng)}" target="_blank" class="btn-navegar">GPS</a>` : ''}
