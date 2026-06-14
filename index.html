@@ -908,7 +908,7 @@ function crearIconoRepartidorEnVivo() {
             const c = clientes.find(item => item.id === id); if (!c) return;
             clienteEnProcesoId = id;
             document.getElementById("modal-cliente-name").innerText = c.nombre;
-            document.getElementById("modal-cliente-monto").innerText = `Monto: $${c.monto}`;
+            document.getElementById("modal-cliente-monto").innerText = `Monto: $${parseFloat(c.monto).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
             
             const selectPago = document.getElementById("select-pago");
             const placeholderOption = document.getElementById("option-placeholder-pago");
