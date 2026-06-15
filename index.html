@@ -755,7 +755,7 @@ if (punto.notas && punto.notas.trim() !== "") {
 
                                 <h4 class="popup-titulo">[#${punto.id}] ${punto.nombre}</h4>
 
-        			${notasPopup} <div class="popup-info-row-diseño">💵 <strong>Cobro:</strong> $${parseFloat(punto.monto).toFixed(2)}</div>
+        			${notasPopup} <div class="popup-info-row-diseño">💵 <strong>Cobro:</strong> $${parseFloat(punto.monto).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
 
                                
 
@@ -830,13 +830,13 @@ if (punto.notas && punto.notas.trim() !== "") {
                 <span class="badge" style="background-color: ${colorMarcadorFinal}">${punto.lat === null ? '•' : numeroPin}</span>
                 <strong style="font-size: 15px; color:#000;">[#${punto.id}] ${punto.nombre}</strong><br>
                 ${htmlNotas}
-                <span class="monto-tag">Cobro: $${parseFloat(punto.monto).toFixed(2)} ${punto.entregado ? '✅ ('+punto.metodoPago+')' : ''}</span>
+                <span class="monto-tag">Cobro: $${parseFloat(punto.monto).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${punto.entregado ? '✅ ('+punto.metodoPago+')' : ''}</span>
                 ${punto.telefono ? `<div class="info-adicional">📞 <strong>Tel:</strong> <a href="tel:${punto.telefono}" onclick="event.stopPropagation();">${punto.telefono}</a> | <a href="https://api.whatsapp.com/send?phone=${(() => { let n = punto.telefono.toString().replace(/\D/g, ''); return n.length === 10 ? '52' + n : n; })()}&text=${encodeURIComponent('¡Hola! 👋 Te saludamos de El Tenate. 🚛✨🧺\nTe informamos que acabamos de llegar a tu ubicación para tu entrega. 📍🙌\nEstamos afuera de tu domicilio, ¡quedamos atentos a tu salida! 🛎️😊\n¡Muchas gracias por tu preferencia!🤝😊')}" target="_blank" onclick="event.stopPropagation();" style="color:#25D366; font-weight:bold;">WhatsApp</a></div>` : ''}
                 ${punto.direccion ? `<div class="info-adicional">🏠 <strong>Dir:</strong> ${punto.direccion}</div>` : ''}
                 <div class="contenedor-botones-ficha" onclick="event.stopPropagation();">
                     ${punto.lat !== null ? `<a href="${obtenerEnlaceMaps(punto.lat, punto.lng)}" target="_blank" class="btn-navegar">GPS</a>` : ''}
                     <a href="${punto.urlOriginal && punto.urlOriginal.startsWith('http') ? punto.urlOriginal : 'javascript:void(0);'}" target="_blank" onclick="event.stopPropagation(); ${!punto.urlOriginal ? 'alert(\'No hay link de ubicación válido\');' : ''}" class="btn-link-cel" >🔗 Abrir Link Cel</a>
-                    <button class="btn-manual" onclick="event.stopPropagation(); asignarYEnviarCoordenadaManual(${punto.id})">🔧 Ubicar</button>
+                    ${ROL_ACTUAL === 'admin' ? `<button class="btn-manual" onclick="event.stopPropagation(); asignarYEnviarCoordenadaManual(${punto.id})">🔧 Ubicar</button>` : ''}
                 </div>
                 <div class="contenedor-botones-ficha" style="margin-top:5px;" onclick="event.stopPropagation();">
                     <button class="btn-gps-vivo" onclick="capturarGpsEnVivoRepartidor(${punto.id})">📍 GPS Real</button>
@@ -1062,7 +1062,7 @@ function crearIconoRepartidorEnVivo() {
 
         function calcularMultiRutasEquitativas() {
             if (ROL_ACTUAL !== "admin") return;
-            
+
             let numRutasInput = parseInt(document.getElementById("num-repartidores").value);
             if (isNaN(numRutasInput) || numRutasInput < 1) {
                 alert("Por favor introduce un número de rutas válido (mayor o igual a 1).");
@@ -1081,64 +1081,239 @@ function crearIconoRepartidorEnVivo() {
                 alert(`Ajustado automáticamente a ${numRutasInput} rutas ya que solo hay esa cantidad de clientes con coordenadas pendientes.`);
             }
 
-            rutasOptimizadasActivas = true; 
-            tiemposEstimadosRutas = {}; 
-            
+            rutasOptimizadasActivas = true;
+            tiemposEstimadosRutas = {};
+
+            // ─── PASO 1: Agrupar clientes con coordenadas idénticas ──────────────────
+            // Los clientes con exactamente las mismas coordenadas forman un "supercliente".
+            // Todos los miembros de un grupo deben ir en la misma ruta.
+            const PRECISION = 6; // decimales para comparar coords
+            const mapaGrupos = {};
+            validos.forEach(p => {
+                const clave = `${parseFloat(p.lat).toFixed(PRECISION)}_${parseFloat(p.lng).toFixed(PRECISION)}`;
+                if (!mapaGrupos[clave]) mapaGrupos[clave] = [];
+                mapaGrupos[clave].push(p);
+            });
+
+            // Cada "nodo" de trabajo representa una coordenada única;
+            // miembros[] contiene todos los clientes reales en esa posición.
+            const nodos = Object.values(mapaGrupos).map(grupo => ({
+                lat: grupo[0].lat,
+                lng: grupo[0].lng,
+                miembros: grupo,
+                peso: grupo.length   // cuántos clientes reales ocupa
+            }));
+
+            // ─── PASO 2: K-Means geográfico con multi-restart + swap post-process ──
+
+            function distEuclid(a, b) {
+                return Math.pow(a.lat - b.lat, 2) + Math.pow(a.lng - b.lng, 2);
+            }
+
+            // Costo total: suma de distancias de cada nodo a su centroide (ponderado)
+            function calcularCostoTotal(asignacion, cents) {
+                let costo = 0;
+                nodos.forEach((n, i) => {
+                    costo += distEuclid(n, cents[asignacion[i]]) * n.peso;
+                });
+                return costo;
+            }
+
+            // Semillas K-Means++ deterministas desde un offset de inicio
+            function elegirSemillas(k, offsetInicio) {
+                let semillas = [];
+                // Rotar punto de inicio para cada restart
+                let primerIdx = offsetInicio % nodos.length;
+                semillas.push({ lat: nodos[primerIdx].lat, lng: nodos[primerIdx].lng });
+
+                while (semillas.length < k) {
+                    // Cada siguiente semilla: el nodo con mayor distancia mínima a cualquier semilla
+                    let maxMinDist = -1, mejorIdx = 0;
+                    nodos.forEach((n, i) => {
+                        let minDist = Math.min(...semillas.map(s => distEuclid(n, s)));
+                        if (minDist > maxMinDist) { maxMinDist = minDist; mejorIdx = i; }
+                    });
+                    semillas.push({ lat: nodos[mejorIdx].lat, lng: nodos[mejorIdx].lng });
+                }
+                return semillas;
+            }
+
+            // Una corrida completa de K-Means ponderado
+            function correrKMeans(k, semillas) {
+                let centroides = semillas.map(s => ({ lat: s.lat, lng: s.lng }));
+                let asignacion = new Array(nodos.length).fill(0);
+                const MAX_ITER = 30;
+
+                for (let iter = 0; iter < MAX_ITER; iter++) {
+                    let cambio = false;
+                    nodos.forEach((n, i) => {
+                        let minD = Infinity, mejorC = 0;
+                        centroides.forEach((c, ci) => {
+                            let d = distEuclid(n, c);
+                            if (d < minD) { minD = d; mejorC = ci; }
+                        });
+                        if (asignacion[i] !== mejorC) { asignacion[i] = mejorC; cambio = true; }
+                    });
+                    if (!cambio) break;
+
+                    // Recalcular centroides ponderados
+                    centroides = centroides.map((prev, ci) => {
+                        let latSum = 0, lngSum = 0, pesoTotal = 0;
+                        nodos.forEach((n, i) => {
+                            if (asignacion[i] === ci) {
+                                latSum += n.lat * n.peso;
+                                lngSum += n.lng * n.peso;
+                                pesoTotal += n.peso;
+                            }
+                        });
+                        return pesoTotal === 0 ? prev : { lat: latSum / pesoTotal, lng: lngSum / pesoTotal };
+                    });
+                }
+                return { asignacion, centroides, costo: calcularCostoTotal(asignacion, centroides) };
+            }
+
+            // Multi-restart: correr K-Means N veces con semillas distintas, conservar la mejor
+            const NUM_RESTARTS = 8;
+            let mejorResultado = null;
+
+            for (let r = 0; r < NUM_RESTARTS; r++) {
+                // Variar punto de inicio: primero el más lejano al depósito, luego rotar
+                let offsetBase = 0;
+                if (r === 0) {
+                    // Semilla clásica: nodo más lejano del depósito
+                    let maxD = -1;
+                    nodos.forEach((n, i) => { let d = distEuclid(n, deposito); if (d > maxD) { maxD = d; offsetBase = i; } });
+                } else {
+                    // Semillas rotadas para explorar distintos mínimos locales
+                    offsetBase = Math.floor((r * nodos.length) / NUM_RESTARTS);
+                }
+                const semillas = elegirSemillas(numRutasInput, offsetBase);
+                const resultado = correrKMeans(numRutasInput, semillas);
+                if (!mejorResultado || resultado.costo < mejorResultado.costo) {
+                    mejorResultado = resultado;
+                }
+            }
+
+            let asignacionNodos = mejorResultado.asignacion;
+            let centroides = mejorResultado.centroides;
+
+            // ─── PASO 3: Balanceo de clientes reales por ruta ───────────────────────
+            // Calcular cuántos clientes reales tiene cada cluster tras K-Means
             const capacidadBase = Math.floor(validos.length / numRutasInput);
-            let residuos = validos.length % numRutasInput;
-            
-            let limitePorRuta = [];
-            for (let r = 0; r < numRutasInput; r++) {
-                limitePorRuta.push(capacidadBase + (residuos > 0 ? 1 : 0));
-                residuos--;
-            }
+            const capacidadMax = capacidadBase + 1; // tolerancia de ±1 para números no divisibles
 
-            let centroides = [];
-            for (let i = 0; i < numRutasInput; i++) {
-                let angulo = (i * 2 * Math.PI) / numRutasInput;
-                centroides.push({ lat: deposito.lat + 0.01 * Math.sin(angulo), lng: deposito.lng + 0.01 * Math.cos(angulo) });
-            }
+            // Construir grupos iniciales respetando la asignación K-Means
+            let gruposNodos = Array.from({ length: numRutasInput }, () => []);
+            nodos.forEach((n, i) => gruposNodos[asignacionNodos[i]].push(n));
 
-            let gruposPuntos = Array.from({ length: numRutasInput }, () => []);
-            let puntosDisponibles = [...validos];
+            // Contar clientes reales por grupo
+            function clientesEnGrupo(g) { return g.reduce((s, n) => s + n.peso, 0); }
 
-            while (puntosDisponibles.length > 0) {
-                for (let r = 0; r < numRutasInput; r++) {
-                    if (gruposPuntos[r].length >= limitePorRuta[r] || puntosDisponibles.length === 0) continue;
-
-                    let minDist = Infinity; let mejorIndice = -1;
-                    for (let i = 0; i < puntosDisponibles.length; i++) {
-                        let d = Math.pow(puntosDisponibles[i].lat - centroides[r].lat, 2) + Math.pow(puntosDisponibles[i].lng - centroides[r].lng, 2);
-                        if (d < minDist) { minDist = d; mejorIndice = i; }
-                    }
-
-                    if (mejorIndice !== -1) {
-                        gruposPuntos[r].push(puntosDisponibles[mejorIndice]);
-                        centroides[r].lat = (centroides[r].lat + puntosDisponibles[mejorIndice].lat) / 2;
-                        centroides[r].lng = (centroides[r].lng + puntosDisponibles[mejorIndice].lng) / 2;
-                        puntosDisponibles.splice(mejorIndice, 1);
+            // Si algún cluster excede capacidadMax, mover nodos al cluster vecino más cercano
+            // que tenga espacio disponible (respetando la zona geográfica lo más posible)
+            let intentos = 0;
+            let sobreCarga = true;
+            while (sobreCarga && intentos < 50) {
+                sobreCarga = false;
+                intentos++;
+                for (let ci = 0; ci < numRutasInput; ci++) {
+                    while (clientesEnGrupo(gruposNodos[ci]) > capacidadMax) {
+                        sobreCarga = true;
+                        // Encontrar el nodo del grupo que esté más cerca de otro centroide con espacio
+                        let mejorNodo = null, mejorIdx = -1, mejorDestino = -1, mejorDist = Infinity;
+                        gruposNodos[ci].forEach((n, ni) => {
+                            for (let cj = 0; cj < numRutasInput; cj++) {
+                                if (cj === ci) continue;
+                                if (clientesEnGrupo(gruposNodos[cj]) + n.peso > capacidadMax) continue;
+                                let d = distEuclid(n, centroides[cj]);
+                                if (d < mejorDist) {
+                                    mejorDist = d; mejorNodo = n; mejorIdx = ni; mejorDestino = cj;
+                                }
+                            }
+                        });
+                        if (mejorNodo === null) break; // no hay destino posible, respetar zona
+                        gruposNodos[ci].splice(mejorIdx, 1);
+                        gruposNodos[mejorDestino].push(mejorNodo);
                     }
                 }
             }
 
-            rutasEstructuradas = [];
-            let listaAsignacionesPayload = []; 
+            // ─── PASO 3b: Post-proceso de intercambio (swap) ─────────────────────────
+            // Recalcular centroides finales de los grupos balanceados
+            function recalcularCentroide(grupo) {
+                let latSum = 0, lngSum = 0, pesoTotal = 0;
+                grupo.forEach(n => { latSum += n.lat * n.peso; lngSum += n.lng * n.peso; pesoTotal += n.peso; });
+                return pesoTotal === 0 ? { lat: 0, lng: 0 } : { lat: latSum / pesoTotal, lng: lngSum / pesoTotal };
+            }
 
-            gruposPuntos.forEach((puntosDelGrupo, indiceDeRuta) => {
-                // Genera la secuencia optimizada que abre y cierra estrictamente en "El Tenate"
-                let rutaOrdenada = optimizarOrdenInternoVecino(puntosDelGrupo, deposito);
+            function costoGrupo(grupo) {
+                const c = recalcularCentroide(grupo);
+                return grupo.reduce((s, n) => s + distEuclid(n, c) * n.peso, 0);
+            }
+
+            // Intentar swaps entre pares de grupos: si intercambiar un nodo de A con uno de B
+            // reduce el costo total sin romper el balance, hacerlo.
+            let mejorado = true;
+            let pasosSwap = 0;
+            while (mejorado && pasosSwap < 20) {
+                mejorado = false;
+                pasosSwap++;
+                for (let a = 0; a < numRutasInput; a++) {
+                    for (let b = a + 1; b < numRutasInput; b++) {
+                        const costoAntes = costoGrupo(gruposNodos[a]) + costoGrupo(gruposNodos[b]);
+                        for (let ia = 0; ia < gruposNodos[a].length; ia++) {
+                            for (let ib = 0; ib < gruposNodos[b].length; ib++) {
+                                const na = gruposNodos[a][ia];
+                                const nb = gruposNodos[b][ib];
+                                // El swap es válido si el balance no se rompe (diferencia de peso ≤ 1)
+                                const pesoA = clientesEnGrupo(gruposNodos[a]);
+                                const pesoB = clientesEnGrupo(gruposNodos[b]);
+                                const nuevoPesoA = pesoA - na.peso + nb.peso;
+                                const nuevoPesoB = pesoB - nb.peso + na.peso;
+                                if (Math.abs(nuevoPesoA - nuevoPesoB) > Math.abs(pesoA - pesoB) + 1) continue;
+                                if (nuevoPesoA > capacidadMax + 1 || nuevoPesoB > capacidadMax + 1) continue;
+
+                                // Simular swap
+                                const grupoASwap = [...gruposNodos[a].filter((_, i) => i !== ia), nb];
+                                const grupoBSwap = [...gruposNodos[b].filter((_, i) => i !== ib), na];
+                                const costoDespues = costoGrupo(grupoASwap) + costoGrupo(grupoBSwap);
+
+                                if (costoDespues < costoAntes - 1e-10) {
+                                    gruposNodos[a] = grupoASwap;
+                                    gruposNodos[b] = grupoBSwap;
+                                    mejorado = true;
+                                    break;
+                                }
+                            }
+                            if (mejorado) break;
+                        }
+                        if (mejorado) break;
+                    }
+                    if (mejorado) break;
+                }
+            }
+
+            // ─── PASO 4: Expandir nodos → clientes reales y construir rutas ─────────
+            rutasEstructuradas = [];
+            let listaAsignacionesPayload = [];
+
+            gruposNodos.forEach((nodosDelGrupo, indiceDeRuta) => {
+                // Aplanar nodos a clientes individuales
+                let clientesDelGrupo = [];
+                nodosDelGrupo.forEach(n => n.miembros.forEach(m => clientesDelGrupo.push(m)));
+
+                let rutaOrdenada = optimizarOrdenInternoVecino(clientesDelGrupo, deposito);
                 rutasEstructuradas.push(rutaOrdenada);
 
-                puntosDelGrupo.forEach(p => {
+                clientesDelGrupo.forEach(p => {
                     listaAsignacionesPayload.push({ nombre: p.nombre, ruta: `Ruta ${indiceDeRuta + 1}` });
                 });
             });
 
+            // ─── PASO 5: Clientes sin ubicación → al final de la última ruta ────────
             if (sinUbicacion.length > 0) {
-                // Si hay clientes sin ubicación, se colocan antes del candado final del depósito
                 let ultimaRuta = rutasEstructuradas[rutasEstructuradas.length - 1];
                 ultimaRuta.splice(ultimaRuta.length - 1, 0, ...sinUbicacion);
-                
                 sinUbicacion.forEach(p => {
                     listaAsignacionesPayload.push({ nombre: p.nombre, ruta: `Ruta ${rutasEstructuradas.length}` });
                 });
