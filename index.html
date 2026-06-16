@@ -16,8 +16,29 @@
         }
         .header { background: #2c3e50; color: white; padding: 15px; text-align: center; position: relative; }
         .content { padding: 15px; flex: 1; overflow-y: auto; }
-        #map { flex: 1; height: 100%; }
+        #map-wrapper { flex: 1; height: 100%; display: flex; flex-direction: column; }
+        #map { flex: 1; min-height: 0; }
         
+        /* ===== EFECTO TIPO BOTÓN FACEBOOK (GLOBAL) ===== */
+        button, .btn-navegar, .btn-link-cel, .btn-manual, .btn-gps-vivo, .btn-popup-entregar, .btn-role-choice {
+            transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.15) !important;
+            user-select: none;
+        }
+        button:hover, .btn-navegar:hover, .btn-link-cel:hover, .btn-manual:hover, .btn-gps-vivo:hover, .btn-popup-entregar:hover, .btn-role-choice:hover {
+            box-shadow: 0 2px 5px rgba(0,0,0,0.25) !important;
+            filter: brightness(1.08);
+        }
+        button:active, .btn-navegar:active, .btn-link-cel:active, .btn-manual:active, .btn-gps-vivo:active, .btn-popup-entregar:active, .btn-role-choice:active {
+            transform: translateY(1px) scale(0.97) !important;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.2) !important;
+            filter: brightness(0.94);
+        }
+        button:focus, .btn-navegar:focus, .btn-link-cel:focus, .btn-manual:focus, .btn-gps-vivo:focus, .btn-popup-entregar:focus {
+            outline: 2px solid rgba(47,128,237,0.4);
+            outline-offset: 1px;
+        }
+
         .btn-logout {
             position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.2);
             color: white; border: none; padding: 4px 8px; font-size: 11px; border-radius: 4px;
@@ -36,6 +57,12 @@
             border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 12px; display: block; text-align: center; font-size: 12px;
         }
         .btn-depot-config:hover { background: #c0392b; }
+
+        .btn-limpiar-registros {
+            background: #b91c1c; color: white; border: none; padding: 9px; font-weight: bold;
+            border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 12px; display: block; text-align: center; font-size: 12px;
+        }
+        .btn-limpiar-registros:hover { background: #7f1d1d; }
 
         .control-rutas {
             background: #f8f9fa; border: 1px solid #e0e0e0; padding: 12px; border-radius: 5px; margin-bottom: 15px;
@@ -90,6 +117,8 @@
             transition: transform 0.2s, background 0.2s; display: block !important;
         }
         .route-item:hover { transform: translateX(3px); background: #f1f3f5; }
+        .route-item::selection, .route-item *::selection { background: transparent; }
+        .route-item::-moz-selection, .route-item *::-moz-selection { background: transparent; }
         .route-item.error-coord { border-left-color: #e67e22; background: #fef5ec; }
         
         .route-item.entregado { border-left-color: #2ecc71 !important; background: #f2f9f5; opacity: 0.8; }
@@ -105,6 +134,23 @@
         .btn-popup-entregar { display: inline-block !important; background: #2ecc71 !important; color: white !important; border: none !important; padding: 5px 10px !important; font-size: 11px !important; font-weight: bold !important; border-radius: 4px !important; cursor: pointer !important; text-align: center; }
 
         .popup-contenedor-diseño { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-width: 200px; max-width: 240px; }
+
+        .leyenda-rutas-mapa {
+            display: none;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 28px;
+            background: #ffffff;
+            padding: 12px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            width: 100%;
+            box-sizing: border-box;
+            flex-shrink: 0;
+        }
+        .leyenda-rutas-item { display: flex; align-items: center; gap: 8px; }
+        .leyenda-rutas-swatch { width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0; display: inline-block; }
+        .leyenda-rutas-texto { font-size: 13px; font-weight: 600; color: #2d3748; white-space: nowrap; }
         .popup-titulo { font-size: 14px; font-weight: bold; margin: 0 0 4px 0; color: #1a202c; line-height: 1.2; }
         .popup-info-row-diseño { font-size: 12px; margin: 3px 0; color: #2d3748; line-height: 1.3; display: flex; align-items: flex-start; }
         .popup-info-row-diseño strong { color: #1a202c; }
@@ -209,6 +255,7 @@
         <div class="content">
             <button id="adm-btn-sync" class="btn-sync" onclick="importarDatosDesdeSheets()">🔄 Sincronizar Google Sheets</button>
             <button id="adm-btn-depot" class="btn-depot-config" onclick="configurarDepositoManual()">⚙️ Ubicación TENATE</button>
+            <button id="adm-btn-limpiar-registros" class="btn-limpiar-registros" style="display:none;" onclick="confirmarLimpiarRegistrosPedidos()">🗑️ Limpiar Estado / Pago / Ruta / Notas</button>
             
             <div class="control-rutas">
                 <div id="adm-bloque-optimizacion">
@@ -241,7 +288,10 @@
         </div>
     </div>
 
-    <div id="map"></div>
+    <div id="map-wrapper">
+        <div id="leyenda-rutas-barra"></div>
+        <div id="map"></div>
+    </div>
 
     <div id="payment-modal">
         <div class="modal-content">
@@ -303,6 +353,44 @@
 
         const map = L.map('map').setView([deposito.lat, deposito.lng], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+
+        function actualizarLeyendaRutasMapa() {
+            const contenedor = document.getElementById('leyenda-rutas-barra');
+            if (!contenedor) return;
+
+            const cantRutas = rutasEstructuradas.length;
+            if (!rutasOptimizadasActivas || cantRutas === 0) {
+                contenedor.style.display = 'none';
+                contenedor.innerHTML = '';
+                map.invalidateSize();
+                return;
+            }
+
+            const nombresPorRuta = construirMapaNombresPorRuta();
+            let rutasAMostrar = [];
+            for (let r = 0; r < cantRutas; r++) {
+                if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== r) continue;
+                rutasAMostrar.push(r);
+            }
+
+            if (rutasAMostrar.length === 0) {
+                contenedor.style.display = 'none';
+                contenedor.innerHTML = '';
+                map.invalidateSize();
+                return;
+            }
+
+            contenedor.style.display = 'flex';
+            contenedor.innerHTML = rutasAMostrar.map(r => {
+                const color = obtenerColorRuta(r);
+                const nombre = nombresPorRuta[r] ? nombresPorRuta[r] : '';
+                return `<div class="leyenda-rutas-item">
+                            <span class="leyenda-rutas-swatch" style="background:${color};"></span>
+                            <span class="leyenda-rutas-texto">Ruta ${r + 1}${nombre ? ` (${nombre})` : ''}</span>
+                        </div>`;
+            }).join('');
+            map.invalidateSize();
+        }
 
         map.on('contextmenu', function(e) {
             if (ROL_ACTUAL !== "admin") return; 
@@ -430,20 +518,25 @@
                 .catch(err => alert("Error al conectar con la base de datos: " + err));
         }
 
+        function construirMapaNombresPorRuta() {
+            const nombresPorRuta = {};
+            clientes.forEach(c => {
+                if (c.rutaAsignadaBase && c.quien) {
+                    const match = c.rutaAsignadaBase.match(/\d+/);
+                    if (match) {
+                        const idx = parseInt(match[0]) - 1;
+                        if (!(idx in nombresPorRuta)) nombresPorRuta[idx] = c.quien;
+                    }
+                }
+            });
+            return nombresPorRuta;
+        }
+
         function actualizarSelectoresDeRutaDinamicos() {
     const cantRutas = rutasEstructuradas.length;
 
     // Construir mapa: índice de ruta (0-based) → nombre del repartidor (quien)
-    const nombresPorRuta = {};
-    clientes.forEach(c => {
-        if (c.rutaAsignadaBase && c.quien) {
-            const match = c.rutaAsignadaBase.match(/\d+/);
-            if (match) {
-                const idx = parseInt(match[0]) - 1;
-                if (!(idx in nombresPorRuta)) nombresPorRuta[idx] = c.quien;
-            }
-        }
-    });
+    const nombresPorRuta = construirMapaNombresPorRuta();
 
     const selectFiltro = document.getElementById("filtro-repartidor");
     const valorPrevioFiltro = selectFiltro.value || "todas";
@@ -564,6 +657,32 @@
                 body: JSON.stringify({ nombre: cl.nombre, accion: "actualizar_ruta_individual", ruta: nuevaRutaTexto })
             }).then(() => {
                 importarDatosDesdeSheets();
+            });
+        }
+
+        function confirmarLimpiarRegistrosPedidos() {
+            const primeraConfirmacion = confirm("⚠️ Esto borrará para TODOS los clientes el Estado de Entrega, Método de Pago, Ruta y Notas en la hoja de Pedidos.\n\n¿Deseas continuar?");
+            if (!primeraConfirmacion) return;
+
+            const segundaConfirmacion = confirm("Esta acción NO se puede deshacer.\n\n¿Confirmas que quieres borrar estos registros ahora?");
+            if (!segundaConfirmacion) return;
+
+            const botonOriginalTexto = document.getElementById("adm-btn-limpiar-registros").innerText;
+            document.getElementById("adm-btn-limpiar-registros").innerText = "Limpiando...";
+            document.getElementById("adm-btn-limpiar-registros").disabled = true;
+
+            fetch(URL_GOOGLE_SCRIPT, {
+                method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accion: "limpiar_registros_pedidos" })
+            }).then(() => {
+                alert("✅ Registros borrados correctamente. Sincronizando...");
+                document.getElementById("adm-btn-limpiar-registros").innerText = botonOriginalTexto;
+                document.getElementById("adm-btn-limpiar-registros").disabled = false;
+                importarDatosDesdeSheets();
+            }).catch(() => {
+                alert("⚠️ Ocurrió un error al intentar limpiar los registros.");
+                document.getElementById("adm-btn-limpiar-registros").innerText = botonOriginalTexto;
+                document.getElementById("adm-btn-limpiar-registros").disabled = false;
             });
         }
 
@@ -739,13 +858,11 @@ if (punto.notas && punto.notas.trim() !== "") {
 
 
                         let opcionesRutaHtml = '';
-
+                        let rutaBaseNormalizada = (punto.rutaAsignadaBase || '').toString().trim().toLowerCase().replace(/\s+/g, ' ');
                         for(let r = 1; r <= cantRutasTotales; r++) {
-
-                            let selectAttr = (punto.rutaAsignadaBase === `Ruta ${r}`) ? 'selected' : '';
-
+                            let rutaComparar = `ruta ${r}`;
+                            let selectAttr = (rutaBaseNormalizada === rutaComparar) ? 'selected' : '';
                             opcionesRutaHtml += `<option value="Ruta ${r}" ${selectAttr}>Ruta ${r}</option>`;
-
                         }
 
 
@@ -852,6 +969,8 @@ if (punto.notas && punto.notas.trim() !== "") {
     if (coordenadasParaEncuadre.length > 1) {
         map.fitBounds(coordenadasParaEncuadre, { padding: [40, 40] });
     }
+
+    actualizarLeyendaRutasMapa();
 }
 
 
@@ -1369,6 +1488,7 @@ function crearIconoRepartidorEnVivo() {
             const subtitulo = document.getElementById("subtitulo-rol-actual");
             const btnSync = document.getElementById("adm-btn-sync");
             const btnDepot = document.getElementById("adm-btn-depot");
+            const btnLimpiar = document.getElementById("adm-btn-limpiar-registros");
             const bloqueOpt = document.getElementById("adm-bloque-optimizacion");
             const selectFiltro = document.getElementById("filtro-repartidor");
             const lblFiltro = document.getElementById("lbl-filtro-vista");
@@ -1378,6 +1498,7 @@ function crearIconoRepartidorEnVivo() {
                 subtitulo.innerText = "Panel Admin";
                 btnSync.style.display = "block";
                 btnDepot.style.display = "block";
+                btnLimpiar.style.display = "block";
                 bloqueOpt.style.display = "block";
                 selectFiltro.style.display = "block";
                 lblFiltro.style.display = "block";
@@ -1389,6 +1510,7 @@ function crearIconoRepartidorEnVivo() {
                 subtitulo.innerText = `Vista Repartidor - Ruta ${parseInt(rutaSeleccionada) + 1}`;
                 btnSync.style.display = "none";
                 btnDepot.style.display = "none";
+                btnLimpiar.style.display = "none";
                 bloqueOpt.style.display = "none";
                 selectFiltro.style.display = "none";
                 lblFiltro.style.display = "none";
