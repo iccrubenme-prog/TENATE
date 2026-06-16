@@ -386,7 +386,8 @@
                             notas: item.notas || "",
                             rutaAsignadaBase: item.ruta || "",
                             quien: item.quien || "",
-                            dia: item.dia || ""
+                            dia: item.dia || "",
+                            pedido: item.pedido || ""
                         });
                     });
 
@@ -501,7 +502,7 @@
                 };
                 
                 label.appendChild(checkbox);
-                label.appendChild(document.createTextNode(`[#${c.id}] ${c.nombre}`));
+                label.appendChild(document.createTextNode(`${c.nombre}`));
                 contenedor.appendChild(label);
             });
         }
@@ -753,7 +754,7 @@ if (punto.notas && punto.notas.trim() !== "") {
 
                             <div class="popup-contenedor-diseño">
 
-                                <h4 class="popup-titulo">[#${punto.id}] ${punto.nombre}</h4>
+                                <h4 class="popup-titulo">${punto.nombre}${punto.pedido ? ` [${punto.pedido}]` : ''}</h4>
 
         			${notasPopup} <div class="popup-info-row-diseño">💵 <strong>Cobro:</strong> $${parseFloat(punto.monto).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
 
@@ -828,7 +829,7 @@ if (punto.notas && punto.notas.trim() !== "") {
 
             li.innerHTML = `
                 <span class="badge" style="background-color: ${colorMarcadorFinal}">${punto.lat === null ? '•' : numeroPin}</span>
-                <strong style="font-size: 15px; color:#000;">[#${punto.id}] ${punto.nombre}</strong><br>
+                <strong style="font-size: 15px; color:#000;">${punto.nombre}${punto.pedido ? ` [${punto.pedido}]` : ''}</strong><br>
                 ${htmlNotas}
                 <span class="monto-tag">Cobro: $${parseFloat(punto.monto).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${punto.entregado ? '✅ ('+punto.metodoPago+')' : ''}</span>
                 ${punto.telefono ? `<div class="info-adicional">📞 <strong>Tel:</strong> <a href="tel:${punto.telefono}" onclick="event.stopPropagation();">${punto.telefono}</a> | <a href="https://api.whatsapp.com/send?phone=${(() => { let n = punto.telefono.toString().replace(/\D/g, ''); return n.length === 10 ? '52' + n : n; })()}&text=${encodeURIComponent('¡Hola! 👋 Te saludamos de El Tenate. 🚛✨🧺\nTe informamos que acabamos de llegar a tu ubicación para tu entrega. 📍🙌\nEstamos afuera de tu domicilio, ¡quedamos atentos a tu salida! 🛎️😊\n¡Muchas gracias por tu preferencia!🤝😊')}" target="_blank" onclick="event.stopPropagation();" style="color:#25D366; font-weight:bold;">WhatsApp</a></div>` : ''}
