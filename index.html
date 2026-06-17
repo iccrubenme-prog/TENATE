@@ -26,6 +26,17 @@
                 max-height: 45vh; order: 2;
             }
             #map-wrapper { width: 100%; flex: 1; min-height: 0; order: 1; }
+
+            /* En vista admin, la leyenda no debe reducir la altura del mapa: se muestra flotando sobre él */
+            body.vista-admin #map-wrapper { position: relative; }
+            body.vista-admin .leyenda-rutas-mapa {
+                position: absolute;
+                top: 0; left: 0; right: 0;
+                z-index: 600;
+                max-height: 22vh;
+                overflow-y: auto;
+            }
+            body.vista-admin #map { height: 100%; }
         }
         
         /* ===== EFECTO TIPO BOTÓN FACEBOOK (GLOBAL) ===== */
@@ -1502,6 +1513,8 @@ function crearIconoRepartidorEnVivo() {
         function seleccionarRolSistema(rol) {
             ROL_ACTUAL = rol;
             document.getElementById("role-gate-modal").style.display = "none";
+            document.body.classList.remove("vista-admin", "vista-repartidor");
+            document.body.classList.add(rol === "admin" ? "vista-admin" : "vista-repartidor");
             
             const subtitulo = document.getElementById("subtitulo-rol-actual");
             const btnSync = document.getElementById("adm-btn-sync");
