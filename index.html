@@ -11,13 +11,22 @@
             margin: 0; padding: 0; display: flex; height: 100vh; background-color: #f4f6f9;
         }
         #sidebar {
-            width: 390px; background: white; box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            width: 390px; min-width: 390px; flex-shrink: 0; background: white; box-shadow: 2px 0 5px rgba(0,0,0,0.1);
             display: flex; flex-direction: column; z-index: 1000;
         }
         .header { background: #2c3e50; color: white; padding: 15px; text-align: center; position: relative; }
         .content { padding: 15px; flex: 1; overflow-y: auto; }
-        #map-wrapper { flex: 1; height: 100%; display: flex; flex-direction: column; }
+        #map-wrapper { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; }
         #map { flex: 1; min-height: 0; }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; height: 100vh; overflow: hidden; }
+            #sidebar {
+                width: 100%; min-width: 0; flex-shrink: 0;
+                max-height: 45vh; order: 2;
+            }
+            #map-wrapper { width: 100%; flex: 1; min-height: 0; order: 1; }
+        }
         
         /* ===== EFECTO TIPO BOTÓN FACEBOOK (GLOBAL) ===== */
         button, .btn-navegar, .btn-link-cel, .btn-manual, .btn-gps-vivo, .btn-popup-entregar, .btn-role-choice {
@@ -253,16 +262,27 @@
             <p id="subtitulo-rol-actual" style="margin: 3px 0 0 0; font-size: 12px; opacity: 0.8;">Distribución Inteligente</p>
         </div>
         <div class="content">
-            <button id="adm-btn-sync" class="btn-sync" onclick="importarDatosDesdeSheets()">🔄 Sincronizar Google Sheets</button>
             <button id="adm-btn-depot" class="btn-depot-config" onclick="configurarDepositoManual()">⚙️ Ubicación TENATE</button>
+            <button id="adm-btn-sync" class="btn-sync" onclick="importarDatosDesdeSheets()">🔄 Sincronizar Google Sheets</button>
             <button id="adm-btn-limpiar-registros" class="btn-limpiar-registros" style="display:none;" onclick="confirmarLimpiarRegistrosPedidos()">🗑️ Limpiar Estado / Pago / Ruta / Notas</button>
             
             <div class="control-rutas">
+                <label style="margin-top:0; color:#27ae60; font-size:13px; font-weight:bold; display:block;">📅 Filtrar por Día:</label>
+                <select id="filtro-dia" onchange="aplicarFiltroDia(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
+                    <option value="todos">📋 Todos los días</option>
+                </select>
+
                 <div id="adm-bloque-optimizacion">
                     <label for="num-repartidores">Cantidad de Rutas a Generar:</label>
                     <input type="number" id="num-repartidores" class="input-dinamico-rutas" min="1" max="100" value="3" placeholder="Ej: 3, 5, 12, 20...">
                     <button class="btn-opt" onclick="calcularMultiRutasEquitativas()">Dividir y Optimizar Rutas</button>
                 </div>
+
+                <label id="lbl-filtro-vista" for="filtro-repartidor" style="margin-top:10px; color:#2f80ed;">👁️ Modo Vista Repartidor:</label>
+                <select id="filtro-repartidor" onchange="aplicarFiltroDeRutaMapeada(this.value)">
+                    </select>
+                
+                <button id="btn-reopt-individual" class="btn-reopt-single" onclick="reoptimizarRutaDesdeUbicacionActual()">⚡ Reoptimizar Mi Ruta (Desde mi GPS)</button>
 
                 <div class="bloque-filtro-clientes">
                     <label style="color:#1b62c4; font-weight:bold; font-size:12px; margin-bottom:4px; display:block;">🔍 Filtrar por Cliente(s):</label>
@@ -271,17 +291,6 @@
                         </div>
                     <button class="btn-limpiar-filtros" onclick="limpiarFiltroClientesTotalmente()">🧼 Quitar Filtro en 1 Clic</button>
                 </div>
-                
-                <label style="margin-top:10px; color:#27ae60; font-size:13px; font-weight:bold; display:block;">📅 Filtrar por Día:</label>
-                <select id="filtro-dia" onchange="aplicarFiltroDia(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
-                    <option value="todos">📋 Todos los días</option>
-                </select>
-
-                <label id="lbl-filtro-vista" for="filtro-repartidor" style="margin-top:10px; color:#2f80ed;">👁️ Modo Vista Repartidor:</label>
-                <select id="filtro-repartidor" onchange="aplicarFiltroDeRutaMapeada(this.value)">
-                    </select>
-                
-                <button id="btn-reopt-individual" class="btn-reopt-single" onclick="reoptimizarRutaDesdeUbicacionActual()">⚡ Reoptimizar Mi Ruta (Desde mi GPS)</button>
             </div>
             
             <div id="contenedor-de-rutas-lista"></div>
@@ -370,6 +379,15 @@
             let rutasAMostrar = [];
             for (let r = 0; r < cantRutas; r++) {
                 if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== r) continue;
+
+                const listaRuta = rutasEstructuradas[r] || [];
+                const tieneClientesVisibles = listaRuta.some(p =>
+                    p.id !== 0 &&
+                    (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())) &&
+                    (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                );
+                if (!tieneClientesVisibles) continue;
+
                 rutasAMostrar.push(r);
             }
 
