@@ -23,19 +23,9 @@
             body { flex-direction: column; height: 100vh; overflow: hidden; }
             #sidebar {
                 width: 100%; min-width: 0; flex-shrink: 0;
-                max-height: 55vh; order: 2;
-                overflow-y: auto; -webkit-overflow-scrolling: touch;
+                max-height: 45vh; order: 2;
             }
             #map-wrapper { width: 100%; flex: 1; min-height: 0; order: 1; }
-
-            /* Fichas de ruta en móvil: columna vertical, full width */
-            .route-list { display: flex; flex-direction: column; gap: 0; }
-            .route-item {
-                width: 100%; box-sizing: border-box;
-                margin-bottom: 6px;
-                transform: none !important; /* evitar translateX en mobile */
-            }
-            .route-item:hover { transform: none; }
 
             /* En vista admin, la leyenda no debe reducir la altura del mapa: se muestra flotando sobre él */
             body.vista-admin #map-wrapper { position: relative; }
@@ -419,7 +409,7 @@
                 return;
             }
 
-            contenedor.style.display = rutasAMostrar.length === 0 || ROL_ACTUAL !== "admin" ? 'none' : 'flex';
+            contenedor.style.display = 'flex';
             contenedor.innerHTML = rutasAMostrar.map(r => {
                 const color = obtenerColorRuta(r);
                 const nombre = nombresPorRuta[r] ? nombresPorRuta[r] : '';
@@ -690,12 +680,47 @@
         function cambiarRutaClienteDesdeMapa(id, nuevaRutaTexto) {
             const cl = clientes.find(c => c.id === id);
             if (!cl) return;
-            
+
+            const FACTOR = Math.pow(10, 6);
+            const latRef = cl.lat !== null ? Math.round(parseFloat(cl.lat) * FACTOR) / FACTOR : null;
+            const lngRef = cl.lng !== null ? Math.round(parseFloat(cl.lng) * FACTOR) / FACTOR : null;
+
+            // Todos los clientes con la misma coordenada van a la misma ruta
+            const clientesMismaCoord = clientes.filter(c => {
+                if (latRef === null || c.lat === null || c.lng === null) return c.id === id;
+                const latC = Math.round(parseFloat(c.lat) * FACTOR) / FACTOR;
+                const lngC = Math.round(parseFloat(c.lng) * FACTOR) / FACTOR;
+                return latC === latRef && lngC === lngRef;
+            });
+
+            const asignaciones = clientesMismaCoord.map(c => ({ nombre: c.nombre, ruta: nuevaRutaTexto }));
+            const matchNueva = nuevaRutaTexto.match(/\d+/);
+            const idxNueva = matchNueva ? parseInt(matchNueva[0]) - 1 : 0;
+            const indicesAfectados = new Set([idxNueva]);
+
+            if (rutasEstructuradas.length > 0 && idxNueva >= 0 && idxNueva < rutasEstructuradas.length) {
+                clientesMismaCoord.forEach(c => {
+                    rutasEstructuradas.forEach((ruta, idxRuta) => {
+                        for (let i = ruta.length - 1; i >= 0; i--) {
+                            if (ruta[i].id === c.id) {
+                                indicesAfectados.add(idxRuta);
+                                ruta.splice(i, 1);
+                            }
+                        }
+                    });
+                    const destino = rutasEstructuradas[idxNueva];
+                    const insertPos = destino.length > 0 ? destino.length - 1 : 0;
+                    destino.splice(insertPos, 0, c);
+                    c.rutaAsignadaBase = nuevaRutaTexto;
+                });
+
+                refrescarMapaYListasVisuales();
+                trazarRutasEspecificas([...indicesAfectados]);
+            }
+
             fetch(URL_GOOGLE_SCRIPT, {
                 method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ nombre: cl.nombre, accion: "actualizar_ruta_individual", ruta: nuevaRutaTexto })
-            }).then(() => {
-                importarDatosDesdeSheets();
+                body: JSON.stringify({ accion: "guardar_rutas_masivo", asignaciones })
             });
         }
 
@@ -1135,7 +1160,6 @@ function crearIconoRepartidorEnVivo() {
             rutasEstructuradas.forEach((listaRuta, indiceRuta) => {
                 if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== indiceRuta) return;
 
-                // Para trazar la línea física, filtramos puntos válidos aplicando también el filtro de día
                 let puntosValidos = listaRuta.filter(p => 
                     p.id === 0 || (
                         p.lat !== null && p.lng !== null && !p.entregado &&
@@ -1176,6 +1200,91 @@ function crearIconoRepartidorEnVivo() {
                             }
                         }
                     });
+            });
+        }
+
+        // Recalcula OSRM solo para los índices de ruta indicados, sin tocar las demás
+        function trazarRutasEspecificas(indicesRutas) {
+            // Quitar solo las líneas de las rutas afectadas
+            const nuevasLineas = [];
+            lineasRutasCapas.forEach(capa => {
+                // No podemos identificar a qué ruta pertenece cada capa individualmente,
+                // así que borramos solo las capas que corresponden a las rutas afectadas
+                // re-trazando todo pero solo procesando los índices pedidos.
+                map.removeLayer(capa);
+            });
+            lineasRutasCapas = [];
+
+            // Re-trazar TODAS las rutas excepto las afectadas desde el cache, y las afectadas desde cero
+            rutasEstructuradas.forEach((listaRuta, indiceRuta) => {
+                if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== indiceRuta) return;
+
+                const esAfectada = indicesRutas.includes(indiceRuta);
+
+                let puntosValidos = listaRuta.filter(p =>
+                    p.id === 0 || (
+                        p.lat !== null && p.lng !== null && !p.entregado &&
+                        (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())) &&
+                        (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                    )
+                );
+                if (puntosValidos.length < 2) return;
+
+                let colorRuta = obtenerColorRuta(indiceRuta);
+
+                const actualizarTitulo = (mins, listaRuta, indiceRuta) => {
+                    tiemposEstimadosRutas[indiceRuta] = mins > 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins} mins`;
+                    let titulos = document.getElementsByClassName('route-section-title');
+                    let clientesFiltradosEnRuta = listaRuta.filter(p =>
+                        p.id !== 0 &&
+                        (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())) &&
+                        (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                    );
+                    let totalClientesRuta = clientesFiltradosEnRuta.length;
+                    let totalCobroRuta = clientesFiltradosEnRuta.reduce((sum, p) => sum + (parseFloat(p.monto) || 0), 0);
+                    for (let t of titulos) {
+                        if (t.innerText.startsWith(`Ruta ${indiceRuta + 1}`)) {
+                            t.innerText = `Ruta ${indiceRuta + 1} (${totalClientesRuta} clientes) | ⏱️ ${tiemposEstimadosRutas[indiceRuta]} | 💰 $${totalCobroRuta.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                        }
+                    }
+                };
+
+                if (esAfectada) {
+                    // Reordenar por vecino más cercano los clientes de la ruta afectada
+                    const soloPuntos = listaRuta.filter(p => p.id !== 0 && p.lat !== null && p.lng !== null);
+                    const nuevaRuta = optimizarOrdenInternoVecino(soloPuntos, deposito);
+                    rutasEstructuradas[indiceRuta] = nuevaRuta;
+                    puntosValidos = nuevaRuta.filter(p =>
+                        p.id === 0 || (
+                            p.lat !== null && p.lng !== null && !p.entregado &&
+                            (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())) &&
+                            (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                        )
+                    );
+                    if (puntosValidos.length < 2) return;
+                    let coordString = puntosValidos.map(p => `${p.lng},${p.lat}`).join(';');
+                    let urlOsim = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
+                    fetch(urlOsim).then(r => r.json()).then(res => {
+                        if (res.routes && res.routes[0]) {
+                            let rutaCapa = L.geoJSON(res.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
+                            lineasRutasCapas.push(rutaCapa);
+                            let mins = Math.round(res.routes[0].duration / 60);
+                            actualizarTitulo(mins, rutasEstructuradas[indiceRuta], indiceRuta);
+                        }
+                    });
+                } else {
+                    // Re-trazar las no afectadas con el tiempo ya cacheado
+                    let coordString = puntosValidos.map(p => `${p.lng},${p.lat}`).join(';');
+                    let urlOsim = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
+                    fetch(urlOsim).then(r => r.json()).then(res => {
+                        if (res.routes && res.routes[0]) {
+                            let rutaCapa = L.geoJSON(res.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
+                            lineasRutasCapas.push(rutaCapa);
+                            let mins = Math.round(res.routes[0].duration / 60);
+                            actualizarTitulo(mins, listaRuta, indiceRuta);
+                        }
+                    });
+                }
             });
         }
 
