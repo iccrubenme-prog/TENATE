@@ -693,7 +693,7 @@
                 return latC === latRef && lngC === lngRef;
             });
 
-            const asignaciones = clientesMismaCoord.map(c => ({ nombre: c.nombre, ruta: nuevaRutaTexto }));
+            const asignaciones = clientesMismaCoord.map(c => ({ id: c.id, nombre: c.nombre, ruta: nuevaRutaTexto }));
             const matchNueva = nuevaRutaTexto.match(/\d+/);
             const idxNueva = matchNueva ? parseInt(matchNueva[0]) - 1 : 0;
             const indicesAfectados = new Set([idxNueva]);
@@ -1136,7 +1136,7 @@ function crearIconoRepartidorEnVivo() {
 
             fetch(URL_GOOGLE_SCRIPT, {
                 method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ nombre: cl.nombre, metodoPago: m })
+                body: JSON.stringify({ id: cl.id, nombre: cl.nombre, metodoPago: m })
             }).then(() => {
                 cl.entregado = true; 
                 cl.metodoPago = m;
@@ -1574,7 +1574,7 @@ function crearIconoRepartidorEnVivo() {
                 rutasEstructuradas.push(rutaOrdenada);
 
                 clientesDelGrupo.forEach(p => {
-                    listaAsignacionesPayload.push({ nombre: p.nombre, ruta: `Ruta ${indiceDeRuta + 1}` });
+                    listaAsignacionesPayload.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${indiceDeRuta + 1}` });
                 });
             });
 
@@ -1583,7 +1583,7 @@ function crearIconoRepartidorEnVivo() {
                 let ultimaRuta = rutasEstructuradas[rutasEstructuradas.length - 1];
                 ultimaRuta.splice(ultimaRuta.length - 1, 0, ...sinUbicacion);
                 sinUbicacion.forEach(p => {
-                    listaAsignacionesPayload.push({ nombre: p.nombre, ruta: `Ruta ${rutasEstructuradas.length}` });
+                    listaAsignacionesPayload.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${rutasEstructuradas.length}` });
                 });
             }
 
