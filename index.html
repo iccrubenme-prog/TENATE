@@ -23,9 +23,19 @@
             body { flex-direction: column; height: 100vh; overflow: hidden; }
             #sidebar {
                 width: 100%; min-width: 0; flex-shrink: 0;
-                max-height: 45vh; order: 2;
+                max-height: 55vh; order: 2;
+                overflow-y: auto; -webkit-overflow-scrolling: touch;
             }
             #map-wrapper { width: 100%; flex: 1; min-height: 0; order: 1; }
+
+            /* Fichas de ruta en móvil: columna vertical, full width */
+            .route-list { display: flex; flex-direction: column; gap: 0; }
+            .route-item {
+                width: 100%; box-sizing: border-box;
+                margin-bottom: 6px;
+                transform: none !important; /* evitar translateX en mobile */
+            }
+            .route-item:hover { transform: none; }
 
             /* En vista admin, la leyenda no debe reducir la altura del mapa: se muestra flotando sobre él */
             body.vista-admin #map-wrapper { position: relative; }
@@ -409,7 +419,7 @@
                 return;
             }
 
-            contenedor.style.display = 'flex';
+            contenedor.style.display = rutasAMostrar.length === 0 || ROL_ACTUAL !== "admin" ? 'none' : 'flex';
             contenedor.innerHTML = rutasAMostrar.map(r => {
                 const color = obtenerColorRuta(r);
                 const nombre = nombresPorRuta[r] ? nombresPorRuta[r] : '';
@@ -1237,12 +1247,9 @@ function crearIconoRepartidorEnVivo() {
             // Los clientes con exactamente las mismas coordenadas forman un "supercliente".
             // Todos los miembros de un grupo deben ir en la misma ruta.
             const PRECISION = 6; // decimales para comparar coords
-            const FACTOR_REDONDEO = Math.pow(10, PRECISION);
             const mapaGrupos = {};
             validos.forEach(p => {
-                const latRedondeada = Math.round(parseFloat(p.lat) * FACTOR_REDONDEO) / FACTOR_REDONDEO;
-                const lngRedondeada = Math.round(parseFloat(p.lng) * FACTOR_REDONDEO) / FACTOR_REDONDEO;
-                const clave = `${latRedondeada}_${lngRedondeada}`;
+                const clave = `${parseFloat(p.lat).toFixed(PRECISION)}_${parseFloat(p.lng).toFixed(PRECISION)}`;
                 if (!mapaGrupos[clave]) mapaGrupos[clave] = [];
                 mapaGrupos[clave].push(p);
             });
@@ -1444,52 +1451,6 @@ function crearIconoRepartidorEnVivo() {
                     if (mejorado) break;
                 }
             }
-
-            // ─── PASO 3c: Validación de seguridad — garantizar que clientes con ─────
-            // coordenadas idénticas SIEMPRE queden en la misma ruta, sin excepción.
-            // (Refuerzo adicional al agrupamiento por nodos, por si algún borde del
-            // balanceo o swap dejara inconsistencias.)
-            const mapaRutaPorNodo = {};
-            gruposNodos.forEach((nodosDelGrupo, idxRuta) => {
-                nodosDelGrupo.forEach(n => {
-                    const clave = `${n.lat}_${n.lng}`;
-                    mapaRutaPorNodo[clave] = idxRuta;
-                });
-            });
-            // Verificar que no haya dos nodos con la misma clave en distintas rutas
-            // (caso extremo: dos nodos "iguales" pero generados en distintas iteraciones).
-            const claveAGruposVistos = {};
-            gruposNodos.forEach((nodosDelGrupo, idxRuta) => {
-                nodosDelGrupo.forEach(n => {
-                    const clave = `${n.lat}_${n.lng}`;
-                    if (!claveAGruposVistos[clave]) claveAGruposVistos[clave] = [];
-                    claveAGruposVistos[clave].push(idxRuta);
-                });
-            });
-            Object.keys(claveAGruposVistos).forEach(clave => {
-                const rutasInvolucradas = [...new Set(claveAGruposVistos[clave])];
-                if (rutasInvolucradas.length > 1) {
-                    // Hay un mismo conjunto de coordenadas repartido en más de una ruta:
-                    // reunir todos los nodos de esa clave en la ruta con mayor peso de ese grupo.
-                    let nodosAfectados = [];
-                    gruposNodos.forEach((grupo, idxRuta) => {
-                        for (let i = grupo.length - 1; i >= 0; i--) {
-                            if (`${grupo[i].lat}_${grupo[i].lng}` === clave) {
-                                nodosAfectados.push({ nodo: grupo[i], rutaOrigen: idxRuta });
-                                grupo.splice(i, 1);
-                            }
-                        }
-                    });
-                    // Elegir como destino la ruta original con más peso combinado
-                    const pesoPorRuta = {};
-                    nodosAfectados.forEach(({ nodo, rutaOrigen }) => {
-                        pesoPorRuta[rutaOrigen] = (pesoPorRuta[rutaOrigen] || 0) + nodo.peso;
-                    });
-                    let rutaDestino = Object.keys(pesoPorRuta).reduce((a, b) => pesoPorRuta[a] >= pesoPorRuta[b] ? a : b);
-                    rutaDestino = parseInt(rutaDestino);
-                    nodosAfectados.forEach(({ nodo }) => gruposNodos[rutaDestino].push(nodo));
-                }
-            });
 
             // ─── PASO 4: Expandir nodos → clientes reales y construir rutas ─────────
             rutasEstructuradas = [];
