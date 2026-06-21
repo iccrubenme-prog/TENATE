@@ -570,6 +570,55 @@
                 .catch(err => alert("Error al conectar con la base de datos: " + err));
         }
 
+        // ─── Sincronización ligera (silenciosa) ──────────────────────────────────
+        // Solo actualiza el estatus de entrega/método de pago de los clientes ya
+        // cargados en memoria, sin redibujar mapas, rutas ni perder zoom/scroll.
+        let intervaloSincroniaLigera = null;
+
+        function sincronizacionLigeraEstatus() {
+            if (URL_GOOGLE_SCRIPT.trim() === "" || clientes.length === 0) return;
+
+            fetch(URL_GOOGLE_SCRIPT)
+                .then(res => res.json())
+                .then(datosNube => {
+                    if (datosNube.error) return;
+
+                    let huboCambios = false;
+
+                    datosNube.forEach(item => {
+                        const cl = clientes.find(c => c.id === item.id);
+                        if (!cl) return;
+
+                        if (cl.entregado !== item.entregado || cl.metodoPago !== item.metodoPago) {
+                            cl.entregado = item.entregado;
+                            cl.metodoPago = item.metodoPago;
+                            huboCambios = true;
+                        }
+                    });
+
+                    if (huboCambios) {
+                        // Reflejar el nuevo estatus también dentro de rutasEstructuradas
+                        rutasEstructuradas.forEach(ruta => {
+                            ruta.forEach(p => {
+                                if (p.id === 0) return;
+                                const actualizado = clientes.find(c => c.id === p.id);
+                                if (actualizado) {
+                                    p.entregado = actualizado.entregado;
+                                    p.metodoPago = actualizado.metodoPago;
+                                }
+                            });
+                        });
+                        refrescarMapaYListasVisuales();
+                    }
+                })
+                .catch(() => { /* fallo silencioso: no interrumpir al usuario */ });
+        }
+
+        function iniciarSincroniaLigeraAutomatica() {
+            if (intervaloSincroniaLigera) clearInterval(intervaloSincroniaLigera);
+            intervaloSincroniaLigera = setInterval(sincronizacionLigeraEstatus, 15000); // cada 15 segundos
+        }
+
         function construirMapaNombresPorRuta() {
             const nombresPorRuta = {};
             clientes.forEach(c => {
@@ -1751,6 +1800,8 @@ function crearIconoRepartidorEnVivo() {
             }
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
+
+            iniciarSincroniaLigeraAutomatica();
         }
 
         function regresarAPantallaDeRoles() {
@@ -1760,6 +1811,7 @@ function crearIconoRepartidorEnVivo() {
             document.getElementById('contenedor-de-rutas-lista').innerHTML = '';
             clientesSeleccionadosFiltro = [];
             document.getElementById("buscador-cliente-texto").value = "";
+            if (intervaloSincroniaLigera) { clearInterval(intervaloSincroniaLigera); intervaloSincroniaLigera = null; }
         }
 
         importarDatosDesdeSheets();
