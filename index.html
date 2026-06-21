@@ -622,8 +622,6 @@
 
         function aplicarFiltroDia(dia) {
             diaActivoFiltrado = dia;
-            clientesSeleccionadosFiltro = [];
-            construirListaCheckboxClientes();
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
@@ -631,23 +629,8 @@
         function construirListaCheckboxClientes() {
             const contenedor = document.getElementById("lista-checkbox-clientes-contenedor");
             contenedor.innerHTML = "";
-
-            // Determinar el subconjunto de clientes visible según ruta y día activos
-            let clientesVisibles = clientes;
-
-            if (rutaActivaFiltrada !== "todas" && rutasEstructuradas.length > 0) {
-                const idxRuta = parseInt(rutaActivaFiltrada);
-                if (!isNaN(idxRuta) && rutasEstructuradas[idxRuta]) {
-                    const idsEnRuta = new Set(rutasEstructuradas[idxRuta].filter(p => p.id !== 0).map(p => p.id));
-                    clientesVisibles = clientesVisibles.filter(c => idsEnRuta.has(c.id));
-                }
-            }
-
-            if (diaActivoFiltrado !== "todos") {
-                clientesVisibles = clientesVisibles.filter(c => c.dia === diaActivoFiltrado);
-            }
-
-            let clientesOrdenados = [...clientesVisibles].sort((a, b) => a.nombre.localeCompare(b.nombre));
+            
+            let clientesOrdenados = [...clientes].sort((a, b) => a.nombre.localeCompare(b.nombre));
             
             clientesOrdenados.forEach(c => {
                 const label = document.createElement("label");
@@ -713,8 +696,6 @@
 
         function aplicarFiltroDeRutaMapeada(valor) {
             rutaActivaFiltrada = valor;
-            clientesSeleccionadosFiltro = [];
-            construirListaCheckboxClientes();
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
@@ -917,7 +898,7 @@
 
                     if (punto.id === 0) return; // Evitamos pintar marcadores extra para el depósito repetido
 
-                    numeroPin++; // Siempre se incrementa según el orden real de visita en la ruta
+
 
                     if (clientesSeleccionadosFiltro.length > 0 && !clientesSeleccionadosFiltro.includes(punto.id.toString())) {
 
@@ -928,6 +909,8 @@
                     if (diaActivoFiltrado !== "todos" && punto.dia !== diaActivoFiltrado) return;
 
 
+
+                    numeroPin++;
 
                     let colorMarcadorFinal = punto.entregado ? COLOR_ENTREGADO : colorFichaActual;
 
