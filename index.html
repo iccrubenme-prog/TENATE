@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Control de Entregas el TENATE</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.fullscreen/3.0.2/Control.FullScreen.min.css" />
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -332,6 +333,7 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.fullscreen@3.0.2/Control.FullScreen.js"></script>
     <script>
         const URL_GOOGLE_SCRIPT = "https://script.google.com/macros/s/AKfycbxWR0Th-bADgFDlXbx6L-HswFo_cDxXjpa9OQTw6v_4Ha5owra7-MwdOZEnwhDc4dQhkw/exec"; 
 
@@ -371,8 +373,10 @@
             return color;
         }
 
-        const map = L.map('map').setView([deposito.lat, deposito.lng], 14);
+        const map = L.map('map', { fullscreenControl: true, fullscreenControlOptions: { position: 'topleft', title: 'Pantalla completa', titleCancel: 'Salir de pantalla completa' } }).setView([deposito.lat, deposito.lng], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+
+
 
         function actualizarLeyendaRutasMapa() {
             const contenedor = document.getElementById('leyenda-rutas-barra');
