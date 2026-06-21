@@ -199,6 +199,7 @@
         .marcador-resaltado { animation: pulsar 0.5s ease-in-out 3; z-index: 99999 !important; }
 
         .monto-tag { font-weight: bold; color: #2d3748; font-size: 13px; margin-top: 3px; display: inline-block;}
+        .hora-llegada-tag { font-weight: bold; color: #8e44ad; font-size: 12px; background:#f3e8fb; padding:2px 6px; border-radius:4px; display: inline-block; margin-top:2px; }
         .info-adicional { font-size: 12px; color: #4a5568; margin-top: 4px; line-height: 1.4; display: block !important; }
         .info-adicional a { color: #2f80ed; font-weight: bold; text-decoration: none; }
         
@@ -293,6 +294,9 @@
                 <label id="lbl-filtro-vista" for="filtro-repartidor" style="margin-top:10px; color:#2f80ed;">👁️ Modo Vista Repartidor:</label>
                 <select id="filtro-repartidor" onchange="aplicarFiltroDeRutaMapeada(this.value)">
                     </select>
+
+                <label for="hora-salida-ruta" style="margin-top:10px; color:#8e44ad; font-size:13px; font-weight:bold; display:block;">🕒 Hora de Salida a Ruta:</label>
+                <input type="time" id="hora-salida-ruta" value="09:00" onchange="actualizarHoraSalidaRuta(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
                 
                 <button id="btn-reopt-individual" class="btn-reopt-single" onclick="reoptimizarRutaDesdeUbicacionActual()">⚡ Reoptimizar Mi Ruta (Desde mi GPS)</button>
 
@@ -340,7 +344,21 @@
         let deposito = { id: 0, nombre: "TENATE", lat: 19.000225768309267, lng: -98.21576086156658 };
         let clientes = [];
         let rutasEstructuradas = [];
-        let tiemposEstimadosRutas = {}; 
+        let tiemposEstimadosRutas = {};
+        let horaSalidaRuta = "09:00";
+        let llegadasEstimadasPorCliente = {}; // id cliente -> "HH:MM" estimado de llegada
+
+        function actualizarHoraSalidaRuta(valor) {
+            horaSalidaRuta = valor || "09:00";
+            if (rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
+        }
+
+        function formatearHora(minutosTotalesDesdeMedianoche) {
+            let h = Math.floor(minutosTotalesDesdeMedianoche / 60) % 24;
+            let m = Math.round(minutosTotalesDesdeMedianoche % 60);
+            if (m === 60) { m = 0; h = (h + 1) % 24; }
+            return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}`;
+        }
         let clienteEnProcesoId = null;
         let marcadoresMapeados = {}; 
         let lineasRutasCapas = []; 
@@ -485,6 +503,7 @@
             limpiarTodoElMapa();
             clientes = [];
             tiemposEstimadosRutas = {};
+            llegadasEstimadasPorCliente = {};
 
             fetch(URL_GOOGLE_SCRIPT)
                 .then(res => res.json())
@@ -603,6 +622,8 @@
 
         function aplicarFiltroDia(dia) {
             diaActivoFiltrado = dia;
+            clientesSeleccionadosFiltro = [];
+            construirListaCheckboxClientes();
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
@@ -610,8 +631,23 @@
         function construirListaCheckboxClientes() {
             const contenedor = document.getElementById("lista-checkbox-clientes-contenedor");
             contenedor.innerHTML = "";
-            
-            let clientesOrdenados = [...clientes].sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+            // Determinar el subconjunto de clientes visible según ruta y día activos
+            let clientesVisibles = clientes;
+
+            if (rutaActivaFiltrada !== "todas" && rutasEstructuradas.length > 0) {
+                const idxRuta = parseInt(rutaActivaFiltrada);
+                if (!isNaN(idxRuta) && rutasEstructuradas[idxRuta]) {
+                    const idsEnRuta = new Set(rutasEstructuradas[idxRuta].filter(p => p.id !== 0).map(p => p.id));
+                    clientesVisibles = clientesVisibles.filter(c => idsEnRuta.has(c.id));
+                }
+            }
+
+            if (diaActivoFiltrado !== "todos") {
+                clientesVisibles = clientesVisibles.filter(c => c.dia === diaActivoFiltrado);
+            }
+
+            let clientesOrdenados = [...clientesVisibles].sort((a, b) => a.nombre.localeCompare(b.nombre));
             
             clientesOrdenados.forEach(c => {
                 const label = document.createElement("label");
@@ -677,6 +713,8 @@
 
         function aplicarFiltroDeRutaMapeada(valor) {
             rutaActivaFiltrada = valor;
+            clientesSeleccionadosFiltro = [];
+            construirListaCheckboxClientes();
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
@@ -879,7 +917,7 @@
 
                     if (punto.id === 0) return; // Evitamos pintar marcadores extra para el depósito repetido
 
-
+                    numeroPin++; // Siempre se incrementa según el orden real de visita en la ruta
 
                     if (clientesSeleccionadosFiltro.length > 0 && !clientesSeleccionadosFiltro.includes(punto.id.toString())) {
 
@@ -890,8 +928,6 @@
                     if (diaActivoFiltrado !== "todos" && punto.dia !== diaActivoFiltrado) return;
 
 
-
-                    numeroPin++;
 
                     let colorMarcadorFinal = punto.entregado ? COLOR_ENTREGADO : colorFichaActual;
 
@@ -940,6 +976,8 @@ if (punto.notas && punto.notas.trim() !== "") {
                             <div class="popup-contenedor-diseño">
 
                                 <h4 class="popup-titulo">${punto.nombre}${punto.pedido ? ` [${punto.pedido}]` : ''}</h4>
+
+                                ${llegadasEstimadasPorCliente[punto.id] && !punto.entregado ? `<div class="popup-info-row-diseño">🕒 <strong>Llegada estimada:</strong> ${llegadasEstimadasPorCliente[punto.id]}</div>` : ''}
 
         			${notasPopup} <div class="popup-info-row-diseño">💵 <strong>Cobro:</strong> $${parseFloat(punto.monto).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
 
@@ -1015,6 +1053,7 @@ if (punto.notas && punto.notas.trim() !== "") {
             li.innerHTML = `
                 <span class="badge" style="background-color: ${colorMarcadorFinal}">${punto.lat === null ? '•' : numeroPin}</span>
                 <strong style="font-size: 15px; color:#000;">${punto.nombre}${punto.pedido ? ` [${punto.pedido}]` : ''}</strong><br>
+                ${llegadasEstimadasPorCliente[punto.id] && !punto.entregado ? `<span class="hora-llegada-tag">🕒 Llegada estimada: ${llegadasEstimadasPorCliente[punto.id]}</span><br>` : ''}
                 ${htmlNotas}
                 <span class="monto-tag">Cobro: $${parseFloat(punto.monto).toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${punto.entregado ? '✅ ('+punto.metodoPago+')' : ''}</span>
                 ${punto.telefono ? `<div class="info-adicional">📞 <strong>Tel:</strong> <a href="tel:${punto.telefono}" onclick="event.stopPropagation();">${punto.telefono}</a> | <a href="https://api.whatsapp.com/send?phone=${(() => { let n = punto.telefono.toString().replace(/\D/g, ''); return n.length === 10 ? '52' + n : n; })()}&text=${encodeURIComponent('¡Hola! 👋 Te saludamos de El Tenate. 🚛✨🧺\nTe informamos que acabamos de llegar a tu ubicación para tu entrega. 📍🙌\nEstamos afuera de tu domicilio, ¡quedamos atentos a tu salida! 🛎️😊\n¡Muchas gracias por tu preferencia!🤝😊')}" target="_blank" onclick="event.stopPropagation();" style="color:#25D366; font-weight:bold;">WhatsApp</a></div>` : ''}
@@ -1184,10 +1223,38 @@ function crearIconoRepartidorEnVivo() {
                             let rutaCapa = L.geoJSON(res.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
                             lineasRutasCapas.push(rutaCapa);
 
+                            // T = tiempo de recorrido (duración OSRM)
                             let segs = res.routes[0].duration;
-                            let mins = Math.round(segs / 60);
-                            tiemposEstimadosRutas[indiceRuta] = mins > 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins} mins`;
-                            
+                            let minsRecorrido = Math.round(segs / 60);
+                            let textoT = minsRecorrido > 60 ? `${Math.floor(minsRecorrido/60)}h ${minsRecorrido%60}m` : `${minsRecorrido} mins`;
+
+                            // R = tiempo de reparto (5 min promedio por cliente entregable)
+                            const MINUTOS_POR_CLIENTE = 5;
+                            let clientesEntregables = puntosValidos.filter(p => p.id !== 0).length;
+                            let minsReparto = clientesEntregables * MINUTOS_POR_CLIENTE;
+                            let textoR = minsReparto > 60 ? `${Math.floor(minsReparto/60)}h ${minsReparto%60}m` : `${minsReparto} mins`;
+
+                            // Total = T + R
+                            let minsTotal = minsRecorrido + minsReparto;
+                            let textoTotal = minsTotal > 60 ? `${Math.floor(minsTotal/60)}h ${minsTotal%60}m` : `${minsTotal} mins`;
+
+                            tiemposEstimadosRutas[indiceRuta] = `Trayecto: ${textoT} | Reparto: ${textoR} | Total Recorrido: ${textoTotal}`;
+
+                            // Calcular hora estimada de llegada a cada cliente usando los legs de OSRM
+                            const [hSal, mSal] = horaSalidaRuta.split(':').map(Number);
+                            let minutosAcumulados = (hSal * 60) + mSal;
+                            const legs = res.routes[0].legs || [];
+                            for (let i = 0; i < puntosValidos.length; i++) {
+                                const punto = puntosValidos[i];
+                                if (i > 0 && legs[i - 1]) {
+                                    minutosAcumulados += (legs[i - 1].duration / 60);
+                                }
+                                if (punto.id !== 0) {
+                                    llegadasEstimadasPorCliente[punto.id] = formatearHora(minutosAcumulados);
+                                    minutosAcumulados += MINUTOS_POR_CLIENTE; // tiempo de reparto en ese cliente
+                                }
+                            }
+
                             let titulos = document.getElementsByClassName('route-section-title');
                             let clientesFiltradosEnRuta = listaRuta.filter(p =>
                                 p.id !== 0 &&
@@ -1202,6 +1269,8 @@ function crearIconoRepartidorEnVivo() {
                                     t.innerText = `Ruta ${indiceRuta + 1} (${totalClientesRuta} clientes) | ⏱️ ${tiemposEstimadosRutas[indiceRuta]} | 💰 $${totalCobroRuta.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                                 }
                             }
+
+                            refrescarMapaYListasVisuales();
                         }
                     });
             });
@@ -1236,8 +1305,34 @@ function crearIconoRepartidorEnVivo() {
 
                 let colorRuta = obtenerColorRuta(indiceRuta);
 
-                const actualizarTitulo = (mins, listaRuta, indiceRuta) => {
-                    tiemposEstimadosRutas[indiceRuta] = mins > 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins} mins`;
+                const actualizarTitulo = (resRoute, puntosUsados, listaRuta, indiceRuta) => {
+                    const MINUTOS_POR_CLIENTE = 5;
+                    let minsRecorrido = Math.round(resRoute.duration / 60);
+                    let textoT = minsRecorrido > 60 ? `${Math.floor(minsRecorrido/60)}h ${minsRecorrido%60}m` : `${minsRecorrido} mins`;
+
+                    let clientesEntregables = puntosUsados.filter(p => p.id !== 0).length;
+                    let minsReparto = clientesEntregables * MINUTOS_POR_CLIENTE;
+                    let textoR = minsReparto > 60 ? `${Math.floor(minsReparto/60)}h ${minsReparto%60}m` : `${minsReparto} mins`;
+
+                    let minsTotal = minsRecorrido + minsReparto;
+                    let textoTotal = minsTotal > 60 ? `${Math.floor(minsTotal/60)}h ${minsTotal%60}m` : `${minsTotal} mins`;
+
+                    tiemposEstimadosRutas[indiceRuta] = `Trayecto: ${textoT} | Reparto: ${textoR} | Total Recorrido: ${textoTotal}`;
+
+                    const [hSal, mSal] = horaSalidaRuta.split(':').map(Number);
+                    let minutosAcumulados = (hSal * 60) + mSal;
+                    const legs = resRoute.legs || [];
+                    for (let i = 0; i < puntosUsados.length; i++) {
+                        const punto = puntosUsados[i];
+                        if (i > 0 && legs[i - 1]) {
+                            minutosAcumulados += (legs[i - 1].duration / 60);
+                        }
+                        if (punto.id !== 0) {
+                            llegadasEstimadasPorCliente[punto.id] = formatearHora(minutosAcumulados);
+                            minutosAcumulados += MINUTOS_POR_CLIENTE;
+                        }
+                    }
+
                     let titulos = document.getElementsByClassName('route-section-title');
                     let clientesFiltradosEnRuta = listaRuta.filter(p =>
                         p.id !== 0 &&
@@ -1251,6 +1346,7 @@ function crearIconoRepartidorEnVivo() {
                             t.innerText = `Ruta ${indiceRuta + 1} (${totalClientesRuta} clientes) | ⏱️ ${tiemposEstimadosRutas[indiceRuta]} | 💰 $${totalCobroRuta.toLocaleString('es-MX', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                         }
                     }
+                    refrescarMapaYListasVisuales();
                 };
 
                 if (esAfectada) {
@@ -1272,8 +1368,7 @@ function crearIconoRepartidorEnVivo() {
                         if (res.routes && res.routes[0]) {
                             let rutaCapa = L.geoJSON(res.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
                             lineasRutasCapas.push(rutaCapa);
-                            let mins = Math.round(res.routes[0].duration / 60);
-                            actualizarTitulo(mins, rutasEstructuradas[indiceRuta], indiceRuta);
+                            actualizarTitulo(res.routes[0], puntosValidos, rutasEstructuradas[indiceRuta], indiceRuta);
                         }
                     });
                 } else {
@@ -1284,8 +1379,7 @@ function crearIconoRepartidorEnVivo() {
                         if (res.routes && res.routes[0]) {
                             let rutaCapa = L.geoJSON(res.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
                             lineasRutasCapas.push(rutaCapa);
-                            let mins = Math.round(res.routes[0].duration / 60);
-                            actualizarTitulo(mins, listaRuta, indiceRuta);
+                            actualizarTitulo(res.routes[0], puntosValidos, listaRuta, indiceRuta);
                         }
                     });
                 }
@@ -1355,6 +1449,7 @@ function crearIconoRepartidorEnVivo() {
 
             rutasOptimizadasActivas = true;
             tiemposEstimadosRutas = {};
+            llegadasEstimadasPorCliente = {};
 
             // ─── PASO 1: Agrupar clientes con coordenadas idénticas ──────────────────
             // Los clientes con exactamente las mismas coordenadas forman un "supercliente".
