@@ -38,6 +38,8 @@
                 overflow-y: auto;
             }
             body.vista-admin #map { height: 100%; }
+
+            #role-gate-modal { flex-direction: row !important; }
         }
         
         /* ===== EFECTO TIPO BOTÓN FACEBOOK (GLOBAL) ===== */
@@ -214,13 +216,16 @@
         .modal-btn-cancel { background: #7f8c8d; margin-top: 8px; }
 
         #role-gate-modal {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #2c3e50; z-index: 20000; display: flex; justify-content: center; align-items: center;
+            position: fixed; inset: 0; width: 100vw; height: 100vh;
+            background: #2c3e50; z-index: 20000;
+            display: flex; flex-direction: row; justify-content: center; align-items: center;
             color: white; font-family: 'Segoe UI', sans-serif;
+            padding: 20px; box-sizing: border-box;
         }
         .gate-box {
             background: white; color: #333; padding: 35px; border-radius: 12px;
-            width: 340px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); text-align: center;
+            width: 340px; max-width: 100%; box-shadow: 0 10px 25px rgba(0,0,0,0.3); text-align: center;
+            margin: auto;
         }
         .gate-title { margin-top: 0; color: #2c3e50; font-size: 22px; margin-bottom: 25px; }
         .btn-role-choice {
@@ -296,7 +301,7 @@
                     </select>
 
                 <label for="hora-salida-ruta" style="margin-top:10px; color:#8e44ad; font-size:13px; font-weight:bold; display:block;">🕒 Hora de Salida a Ruta:</label>
-                <input type="time" id="hora-salida-ruta" value="09:00" onchange="actualizarHoraSalidaRuta(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
+                <input type="time" id="hora-salida-ruta" value="" onchange="actualizarHoraSalidaRuta(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
                 
                 <button id="btn-reopt-individual" class="btn-reopt-single" onclick="reoptimizarRutaDesdeUbicacionActual()">⚡ Reoptimizar Mi Ruta (Desde mi GPS)</button>
 
@@ -345,13 +350,32 @@
         let clientes = [];
         let rutasEstructuradas = [];
         let tiemposEstimadosRutas = {};
-        let horaSalidaRuta = "09:00";
+        function obtenerHoraActualHHMM() {
+            const ahora = new Date();
+            return `${ahora.getHours().toString().padStart(2,'0')}:${ahora.getMinutes().toString().padStart(2,'0')}`;
+        }
+        let horaSalidaRuta = obtenerHoraActualHHMM();
+        let horaSalidaEditadaManualmente = false; // Si el usuario la cambia a mano, dejamos de autoactualizarla
         let llegadasEstimadasPorCliente = {}; // id cliente -> "HH:MM" estimado de llegada
 
         function actualizarHoraSalidaRuta(valor) {
-            horaSalidaRuta = valor || "09:00";
+            horaSalidaEditadaManualmente = true;
+            horaSalidaRuta = valor || obtenerHoraActualHHMM();
             if (rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
+
+        // Mantiene "Hora de Salida a Ruta" sincronizada con la hora real del dispositivo
+        // mientras el usuario no la haya editado manualmente durante la sesión.
+        function actualizarHoraSalidaAutomaticamente() {
+            if (horaSalidaEditadaManualmente) return;
+            const nuevaHora = obtenerHoraActualHHMM();
+            if (nuevaHora === horaSalidaRuta) return;
+            horaSalidaRuta = nuevaHora;
+            const input = document.getElementById("hora-salida-ruta");
+            if (input) input.value = horaSalidaRuta;
+            if (rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
+        }
+        setInterval(actualizarHoraSalidaAutomaticamente, 30000); // revisa cada 30 segundos
 
         function formatearHora(minutosTotalesDesdeMedianoche) {
             let h = Math.floor(minutosTotalesDesdeMedianoche / 60) % 24;
@@ -527,7 +551,8 @@
                             rutaAsignadaBase: item.ruta || "",
                             quien: item.quien || "",
                             dia: item.dia || "",
-                            pedido: item.pedido || ""
+                            pedido: item.pedido || "",
+                            cte: (item.cte !== undefined && item.cte !== null && item.cte.toString().trim() !== "") ? parseInt(item.cte) : null
                         });
                     });
 
@@ -552,8 +577,15 @@
                                 rutasEstructuradas[0].push(c);
                             }
                         });
-                        // Colocar el candado de cierre en el punto de partida original
-                        rutasEstructuradas.forEach(r => r.push(deposito));
+                        // Ordenar cada ruta según el orden fijo guardado en la columna #Cte.
+                        // Los clientes sin valor de #Cte (legado) se mantienen al final en el
+                        // orden en que llegaron, para no perder información existente.
+                        rutasEstructuradas = rutasEstructuradas.map(ruta => {
+                            const clientesRuta = ruta.filter(p => p.id !== 0);
+                            const conCte = clientesRuta.filter(p => p.cte !== null).sort((a, b) => a.cte - b.cte);
+                            const sinCte = clientesRuta.filter(p => p.cte === null);
+                            return [deposito, ...conCte, ...sinCte, deposito];
+                        });
                     } else {
                         rutasOptimizadasActivas = false;
                         rutasEstructuradas = [[deposito, ...clientes, deposito]];
@@ -665,12 +697,19 @@
             diasUnicos.forEach(d => {
                 select.innerHTML += `<option value="${d}">${d}</option>`;
             });
+            // Restaurar el último filtro de día guardado para este usuario, si sigue disponible
+            const diaGuardado = localStorage.getItem("tenate_filtro_dia");
+            if (diaGuardado && (diaGuardado === "todos" || diasUnicos.includes(diaGuardado))) {
+                diaActivoFiltrado = diaGuardado;
+                select.value = diaGuardado;
+            }
         }
 
-        let diaActivoFiltrado = "todos";
+        let diaActivoFiltrado = localStorage.getItem("tenate_filtro_dia") || "todos";
 
         function aplicarFiltroDia(dia) {
             diaActivoFiltrado = dia;
+            localStorage.setItem("tenate_filtro_dia", dia);
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
@@ -786,8 +825,25 @@
                     c.rutaAsignadaBase = nuevaRutaTexto;
                 });
 
+                // Recalcular el orden fijo (#Cte) de TODAS las rutas afectadas (origen y destino)
+                const asignacionesCte = [];
+                indicesAfectados.forEach(idxRuta => {
+                    let ordenVisita = 0;
+                    rutasEstructuradas[idxRuta].forEach(p => {
+                        if (p.id === 0) return;
+                        ordenVisita++;
+                        p.cte = ordenVisita;
+                        asignacionesCte.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${idxRuta + 1}`, cte: p.cte });
+                    });
+                });
+
                 refrescarMapaYListasVisuales();
                 trazarRutasEspecificas([...indicesAfectados]);
+
+                fetch(URL_GOOGLE_SCRIPT, {
+                    method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ accion: "guardar_rutas_masivo", asignaciones: asignacionesCte })
+                });
             }
 
             fetch(URL_GOOGLE_SCRIPT, {
@@ -1382,25 +1438,15 @@ function crearIconoRepartidorEnVivo() {
                 };
 
                 if (esAfectada) {
-                    // Reordenar por vecino más cercano los clientes de la ruta afectada
-                    const soloPuntos = listaRuta.filter(p => p.id !== 0 && p.lat !== null && p.lng !== null);
-                    const nuevaRuta = optimizarOrdenInternoVecino(soloPuntos, deposito);
-                    rutasEstructuradas[indiceRuta] = nuevaRuta;
-                    puntosValidos = nuevaRuta.filter(p =>
-                        p.id === 0 || (
-                            p.lat !== null && p.lng !== null && !p.entregado &&
-                            (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())) &&
-                            (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
-                        )
-                    );
-                    if (puntosValidos.length < 2) return;
+                    // Solo se recalcula el trazo OSRM/tiempo; el orden de los clientes ya
+                    // existentes en la ruta se conserva tal cual (orden fijo #Cte).
                     let coordString = puntosValidos.map(p => `${p.lng},${p.lat}`).join(';');
                     let urlOsim = `https://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`;
                     fetch(urlOsim).then(r => r.json()).then(res => {
                         if (res.routes && res.routes[0]) {
                             let rutaCapa = L.geoJSON(res.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
                             lineasRutasCapas.push(rutaCapa);
-                            actualizarTitulo(res.routes[0], puntosValidos, rutasEstructuradas[indiceRuta], indiceRuta);
+                            actualizarTitulo(res.routes[0], puntosValidos, listaRuta, indiceRuta);
                         }
                     });
                 } else {
@@ -1447,6 +1493,21 @@ function crearIconoRepartidorEnVivo() {
 
                     // Al reconstruir para la vista del repartidor: Punto Inicial (deposito), Recorrido optimizado (con el candado de cierre integrado), y los estáticos / entregados al final.
                     rutasEstructuradas[idxRuta] = [deposito, ...subRutaReoptimizada.slice(1), ...estaticos.filter(p => p.id !== 0)];
+
+                    // Recalcular y persistir el orden fijo (#Cte) según la nueva posición de visita
+                    let ordenVisita = 0;
+                    let asignacionesCte = [];
+                    rutasEstructuradas[idxRuta].forEach(p => {
+                        if (p.id === 0) return;
+                        ordenVisita++;
+                        p.cte = ordenVisita;
+                        asignacionesCte.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${idxRuta + 1}`, cte: p.cte });
+                    });
+
+                    fetch(URL_GOOGLE_SCRIPT, {
+                        method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ accion: "guardar_rutas_masivo", asignaciones: asignacionesCte })
+                    });
 
                     alert("¡Ruta reoptimizada con éxito según tu posición actual incorporando el regreso a El Tenate!");
                     refrescarMapaYListasVisuales();
@@ -1704,17 +1765,28 @@ function crearIconoRepartidorEnVivo() {
                 let rutaOrdenada = optimizarOrdenInternoVecino(clientesDelGrupo, deposito);
                 rutasEstructuradas.push(rutaOrdenada);
 
+                // Asignar el orden fijo (#Cte) según la posición real de visita dentro de la ruta
+                let ordenVisita = 0;
+                rutaOrdenada.forEach(p => {
+                    if (p.id === 0) return;
+                    ordenVisita++;
+                    p.cte = ordenVisita;
+                });
+
                 clientesDelGrupo.forEach(p => {
-                    listaAsignacionesPayload.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${indiceDeRuta + 1}` });
+                    listaAsignacionesPayload.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${indiceDeRuta + 1}`, cte: p.cte });
                 });
             });
 
             // ─── PASO 5: Clientes sin ubicación → al final de la última ruta ────────
             if (sinUbicacion.length > 0) {
                 let ultimaRuta = rutasEstructuradas[rutasEstructuradas.length - 1];
+                let ordenVisita = ultimaRuta.filter(p => p.id !== 0).length;
                 ultimaRuta.splice(ultimaRuta.length - 1, 0, ...sinUbicacion);
                 sinUbicacion.forEach(p => {
-                    listaAsignacionesPayload.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${rutasEstructuradas.length}` });
+                    ordenVisita++;
+                    p.cte = ordenVisita;
+                    listaAsignacionesPayload.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${rutasEstructuradas.length}`, cte: p.cte });
                 });
             }
 
@@ -1774,6 +1846,7 @@ function crearIconoRepartidorEnVivo() {
             const selectFiltro = document.getElementById("filtro-repartidor");
             const lblFiltro = document.getElementById("lbl-filtro-vista");
             const btnReopt = document.getElementById("btn-reopt-individual");
+            const bloqueFiltroClientes = document.querySelector(".bloque-filtro-clientes");
 
             if (ROL_ACTUAL === "admin") {
                 subtitulo.innerText = "Panel Admin";
@@ -1784,6 +1857,7 @@ function crearIconoRepartidorEnVivo() {
                 selectFiltro.style.display = "block";
                 lblFiltro.style.display = "block";
                 btnReopt.style.display = "none";
+                if (bloqueFiltroClientes) bloqueFiltroClientes.style.display = "block";
                 rutaActivaFiltrada = "todas";
                 selectFiltro.value = "todas";
             } else {
@@ -1796,6 +1870,7 @@ function crearIconoRepartidorEnVivo() {
                 selectFiltro.style.display = "none";
                 lblFiltro.style.display = "none";
                 btnReopt.style.display = "block";
+                if (bloqueFiltroClientes) bloqueFiltroClientes.style.display = "none";
                 rutaActivaFiltrada = rutaSeleccionada;
             }
             refrescarMapaYListasVisuales();
@@ -1814,6 +1889,7 @@ function crearIconoRepartidorEnVivo() {
             if (intervaloSincroniaLigera) { clearInterval(intervaloSincroniaLigera); intervaloSincroniaLigera = null; }
         }
 
+        document.getElementById("hora-salida-ruta").value = horaSalidaRuta;
         importarDatosDesdeSheets();
     </script>
 </body>
