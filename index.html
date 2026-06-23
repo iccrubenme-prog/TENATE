@@ -86,6 +86,41 @@
             border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 12px; display: block; text-align: center; font-size: 12px;
         }
         .btn-limpiar-registros:hover { background: #7f1d1d; }
+        .btn-resumen-rutas {
+            background: #1a3c5e; color: white; border: none; padding: 9px; font-weight: bold;
+            border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 12px; display: block; text-align: center; font-size: 12px;
+        }
+        .btn-resumen-rutas:hover { background: #0f2540; }
+        #modal-resumen-rutas {
+            display:none; position:fixed; inset:0; z-index:30000;
+            background:rgba(0,0,0,.55); justify-content:center; align-items:center;
+        }
+        #modal-resumen-rutas.abierto { display:flex; }
+        .resumen-box {
+            background:#fff; border-radius:12px; padding:28px 24px 20px;
+            width:min(620px,95vw); max-height:80vh; overflow-y:auto;
+            box-shadow:0 12px 40px rgba(0,0,0,.3); font-family:'Segoe UI',sans-serif;
+        }
+        .resumen-header {
+            display:flex; justify-content:space-between; align-items:center;
+            margin-bottom:18px;
+        }
+        .resumen-header h2 { font-size:18px; color:#1a3c5e; margin:0; }
+        .resumen-cerrar {
+            background:none; border:none; font-size:22px; cursor:pointer; color:#666;
+            line-height:1;
+        }
+        .resumen-tabla { width:100%; border-collapse:collapse; font-size:14px; }
+        .resumen-tabla th {
+            background:#1a3c5e; color:#fff; padding:10px 12px; text-align:left;
+        }
+        .resumen-tabla td { padding:10px 12px; border-bottom:1px solid #e8ecf0; }
+        .resumen-tabla tr:hover td { background:#f0f4f8; }
+        .resumen-tabla .badge-ruta {
+            display:inline-block; width:14px; height:14px; border-radius:3px;
+            margin-right:6px; vertical-align:middle;
+        }
+        .resumen-nota { font-size:11px; color:#888; margin-top:12px; text-align:right; }
 
         .control-rutas {
             background: #f8f9fa; border: 1px solid #e0e0e0; padding: 12px; border-radius: 5px; margin-bottom: 15px;
@@ -283,6 +318,7 @@
             <button id="adm-btn-depot" class="btn-depot-config" onclick="configurarDepositoManual()">⚙️ Ubicación TENATE</button>
             <button id="adm-btn-sync" class="btn-sync" onclick="importarDatosDesdeSheets()">🔄 Sincronizar Google Sheets</button>
             <button id="adm-btn-limpiar-registros" class="btn-limpiar-registros" style="display:none;" onclick="confirmarLimpiarRegistrosPedidos()">🗑️ Limpiar Estado / Pago / Ruta / Notas</button>
+            <button id="adm-btn-resumen" class="btn-resumen-rutas" style="display:none;" onclick="mostrarResumenRutas()">📊 Resumen de Rutas</button>
             
             <div class="control-rutas">
                 <label style="margin-top:0; color:#27ae60; font-size:13px; font-weight:bold; display:block;">📅 Filtrar por Día:</label>
@@ -819,15 +855,25 @@
                             }
                         }
                     });
+                    // Insertar en destino antes de aplicar reoptimización
                     const destino = rutasEstructuradas[idxNueva];
                     const insertPos = destino.length > 0 ? destino.length - 1 : 0;
                     destino.splice(insertPos, 0, c);
                     c.rutaAsignadaBase = nuevaRutaTexto;
                 });
 
-                // Recalcular el orden fijo (#Cte) de TODAS las rutas afectadas (origen y destino)
+                // Reoptimizar el orden interno de cada ruta afectada (origen y destino)
+                // usando el algoritmo de vecino más cercano partiendo desde el depósito.
                 const asignacionesCte = [];
                 indicesAfectados.forEach(idxRuta => {
+                    const soloClientes = rutasEstructuradas[idxRuta].filter(p => p.id !== 0 && p.lat !== null && p.lng !== null);
+                    const sinCoord = rutasEstructuradas[idxRuta].filter(p => p.id !== 0 && (p.lat === null || p.lng === null));
+                    const rutaOptimizada = optimizarOrdenInternoVecino(soloClientes, deposito);
+                    // Insertar los sin coordenadas al final antes del depósito de cierre
+                    rutaOptimizada.splice(rutaOptimizada.length - 1, 0, ...sinCoord);
+                    rutasEstructuradas[idxRuta] = rutaOptimizada;
+
+                    // Recalcular el orden fijo (#Cte) según el nuevo orden optimizado
                     let ordenVisita = 0;
                     rutasEstructuradas[idxRuta].forEach(p => {
                         if (p.id === 0) return;
@@ -1842,6 +1888,7 @@ function crearIconoRepartidorEnVivo() {
             const btnSync = document.getElementById("adm-btn-sync");
             const btnDepot = document.getElementById("adm-btn-depot");
             const btnLimpiar = document.getElementById("adm-btn-limpiar-registros");
+            const btnResumen = document.getElementById("adm-btn-resumen");
             const bloqueOpt = document.getElementById("adm-bloque-optimizacion");
             const selectFiltro = document.getElementById("filtro-repartidor");
             const lblFiltro = document.getElementById("lbl-filtro-vista");
@@ -1853,6 +1900,7 @@ function crearIconoRepartidorEnVivo() {
                 btnSync.style.display = "block";
                 btnDepot.style.display = "block";
                 btnLimpiar.style.display = "block";
+                btnResumen.style.display = "block";
                 bloqueOpt.style.display = "block";
                 selectFiltro.style.display = "block";
                 lblFiltro.style.display = "block";
@@ -1866,6 +1914,7 @@ function crearIconoRepartidorEnVivo() {
                 btnSync.style.display = "none";
                 btnDepot.style.display = "none";
                 btnLimpiar.style.display = "none";
+                btnResumen.style.display = "none";
                 bloqueOpt.style.display = "none";
                 selectFiltro.style.display = "none";
                 lblFiltro.style.display = "none";
@@ -1877,6 +1926,80 @@ function crearIconoRepartidorEnVivo() {
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
 
             iniciarSincroniaLigeraAutomatica();
+        }
+
+        function cerrarResumenRutas() {
+            document.getElementById("modal-resumen-rutas").classList.remove("abierto");
+        }
+
+        function obtenerNombreRuta(indice) {
+            const select = document.getElementById("filtro-repartidor");
+            if (select && select.options[indice + 1]) {
+                const texto = select.options[indice + 1].text;
+return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
+            }
+            return `Ruta ${indice + 1}`;
+        }
+
+        function extraerMinutosTotales(textoTiempo) {
+            if (!textoTiempo) return 0;
+            // Busca "Total Recorrido: Xh Ym" o "Total Recorrido: Zm mins"
+            const matchHM = textoTiempo.match(/Total Recorrido:\s*(\d+)h\s*(\d+)m/);
+            if (matchHM) return parseInt(matchHM[1]) * 60 + parseInt(matchHM[2]);
+            const matchM = textoTiempo.match(/Total Recorrido:\s*(\d+)\s*mins/);
+            if (matchM) return parseInt(matchM[1]);
+            return 0;
+        }
+
+        function mostrarResumenRutas() {
+            if (!rutasOptimizadasActivas || rutasEstructuradas.length === 0) {
+                alert("Primero genera las rutas para poder ver el resumen.");
+                return;
+            }
+
+            // Construir datos de cada ruta
+            const filas = rutasEstructuradas.map((listaRuta, indice) => {
+                const clientes = listaRuta.filter(p =>
+                    p.id !== 0 &&
+                    (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                );
+                const totalClientes = clientes.length;
+                const totalMonto = clientes.reduce((s, p) => s + (parseFloat(p.monto) || 0), 0);
+                const tiempoTexto = tiemposEstimadosRutas[indice] || "—";
+                const minutos = extraerMinutosTotales(tiempoTexto);
+                const nombre = obtenerNombreRuta(indice);
+                const color = obtenerColorRuta(indice);
+
+		const matchTotalHM = tiempoTexto.match(/Total Recorrido:\s*(\d+h\s*\d+m)/);
+		const matchTotalM  = tiempoTexto.match(/Total Recorrido:\s*(\d+\s*mins)/);
+		const tiempoTotal  = matchTotalHM ? matchTotalHM[1] : (matchTotalM ? matchTotalM[1] : "—");
+
+                return { indice, nombre, totalClientes, totalMonto, tiempoTexto, tiempoTotal, minutos, color };
+		
+
+
+            });
+
+            // Ordenar de mayor a menor tiempo total de recorrido
+            filas.sort((a, b) => b.minutos - a.minutos);
+
+            const tbody = document.getElementById("resumen-tabla-body");
+            tbody.innerHTML = "";
+            filas.forEach(f => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                    <td>
+                        <span class="badge-ruta" style="background:${f.color}"></span>
+                        ${f.nombre}
+                    </td>
+                    <td style="text-align:center;">${f.totalClientes}</td>
+                   <td style="font-size:13px; color:#444; font-weight:600;">${f.tiempoTotal || "—"}</td>
+                    <td style="font-weight:bold; color:#27ae60;">$${f.totalMonto.toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById("modal-resumen-rutas").classList.add("abierto");
         }
 
         function regresarAPantallaDeRoles() {
@@ -1892,5 +2015,26 @@ function crearIconoRepartidorEnVivo() {
         document.getElementById("hora-salida-ruta").value = horaSalidaRuta;
         importarDatosDesdeSheets();
     </script>
+    <!-- Modal resumen de rutas -->
+    <div id="modal-resumen-rutas">
+        <div class="resumen-box">
+            <div class="resumen-header">
+                <h2>📊 Resumen de Rutas</h2>
+                <button class="resumen-cerrar" onclick="cerrarResumenRutas()">✕</button>
+            </div>
+            <table class="resumen-tabla">
+                <thead>
+                    <tr>
+                        <th>Ruta</th>
+                        <th>Clientes</th>
+                        <th>Tiempo Total</th>
+                        <th>Monto Total</th>
+                    </tr>
+                </thead>
+                <tbody id="resumen-tabla-body"></tbody>
+            </table>
+            <p class="resumen-nota">Ordenado de mayor a menor tiempo de recorrido.</p>
+        </div>
+    </div>
 </body>
 </html>
