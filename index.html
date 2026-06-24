@@ -336,6 +336,7 @@
                 <select id="filtro-repartidor" onchange="aplicarFiltroDeRutaMapeada(this.value)">
                     </select>
 
+
                 <label for="hora-salida-ruta" style="margin-top:10px; color:#8e44ad; font-size:13px; font-weight:bold; display:block;">🕒 Hora de Salida a Ruta:</label>
                 <input type="time" id="hora-salida-ruta" value="" onchange="actualizarHoraSalidaRuta(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
                 
@@ -651,40 +652,77 @@
                 .then(datosNube => {
                     if (datosNube.error) return;
 
-                    let huboCambios = false;
+                    let huboCambiosEstatus = false;
+                    let huboCambiosOrden   = false;
 
                     datosNube.forEach(item => {
                         const cl = clientes.find(c => c.id === item.id);
                         if (!cl) return;
 
+                        // ── Estatus de entrega ──────────────────────────────────────
                         if (cl.entregado !== item.entregado || cl.metodoPago !== item.metodoPago) {
-                            cl.entregado = item.entregado;
-                            cl.metodoPago = item.metodoPago;
-                            huboCambios = true;
+                            cl.entregado   = item.entregado;
+                            cl.metodoPago  = item.metodoPago;
+                            huboCambiosEstatus = true;
+                        }
+
+                        // ── Ruta asignada y orden de visita (#Cte) ─────────────────
+                        const cteNube  = (item.cte !== undefined && item.cte !== null && item.cte.toString().trim() !== "")
+                                         ? parseInt(item.cte) : null;
+                        const rutaNube = (item.ruta || "").toString().trim();
+
+                        if (cl.rutaAsignadaBase !== rutaNube || cl.cte !== cteNube) {
+                            cl.rutaAsignadaBase = rutaNube;
+                            cl.cte              = cteNube;
+                            huboCambiosOrden    = true;
                         }
                     });
 
-                    if (huboCambios) {
-                        // Reflejar el nuevo estatus también dentro de rutasEstructuradas
+                    if (huboCambiosOrden) {
+                        // Reconstruir rutasEstructuradas respetando ruta + cte de la nube
+                        const maxRutaNum = clientes.reduce((max, c) => {
+                            const m = (c.rutaAsignadaBase || "").match(/\d+/);
+                            return m ? Math.max(max, parseInt(m[0])) : max;
+                        }, 1);
+
+                        rutasEstructuradas = Array.from({ length: maxRutaNum }, () => [deposito]);
+                        clientes.forEach(c => {
+                            const m = (c.rutaAsignadaBase || "").match(/\d+/);
+                            const idx = m ? parseInt(m[0]) - 1 : 0;
+                            if (idx >= 0 && idx < maxRutaNum) rutasEstructuradas[idx].push(c);
+                            else rutasEstructuradas[0].push(c);
+                        });
+
+                        // Ordenar cada ruta por cte (orden fijo de visita)
+                        rutasEstructuradas = rutasEstructuradas.map(ruta => {
+                            const cli   = ruta.filter(p => p.id !== 0);
+                            const conCte = cli.filter(p => p.cte !== null && p.cte !== undefined).sort((a, b) => a.cte - b.cte);
+                            const sinCte = cli.filter(p => p.cte === null || p.cte === undefined);
+                            return [deposito, ...conCte, ...sinCte, deposito];
+                        });
+
+                        actualizarSelectoresDeRutaDinamicos();
+                        refrescarMapaYListasVisuales();
+                        if (rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
+
+                    } else if (huboCambiosEstatus) {
+                        // Solo actualizar estatus dentro de rutasEstructuradas (más ligero)
                         rutasEstructuradas.forEach(ruta => {
                             ruta.forEach(p => {
                                 if (p.id === 0) return;
-                                const actualizado = clientes.find(c => c.id === p.id);
-                                if (actualizado) {
-                                    p.entregado = actualizado.entregado;
-                                    p.metodoPago = actualizado.metodoPago;
-                                }
+                                const act = clientes.find(c => c.id === p.id);
+                                if (act) { p.entregado = act.entregado; p.metodoPago = act.metodoPago; }
                             });
                         });
                         refrescarMapaYListasVisuales();
                     }
                 })
-                .catch(() => { /* fallo silencioso: no interrumpir al usuario */ });
+                .catch(() => { /* fallo silencioso */ });
         }
 
         function iniciarSincroniaLigeraAutomatica() {
             if (intervaloSincroniaLigera) clearInterval(intervaloSincroniaLigera);
-            intervaloSincroniaLigera = setInterval(sincronizacionLigeraEstatus, 15000); // cada 15 segundos
+            intervaloSincroniaLigera = setInterval(sincronizacionLigeraEstatus, 10000); // cada 10 segundos
         }
 
         function construirMapaNombresPorRuta() {
@@ -1904,7 +1942,7 @@ function crearIconoRepartidorEnVivo() {
                 bloqueOpt.style.display = "block";
                 selectFiltro.style.display = "block";
                 lblFiltro.style.display = "block";
-                btnReopt.style.display = "none";
+                btnReopt.style.display = "block";
                 if (bloqueFiltroClientes) bloqueFiltroClientes.style.display = "block";
                 rutaActivaFiltrada = "todas";
                 selectFiltro.value = "todas";
@@ -1956,6 +1994,12 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
                 alert("Primero genera las rutas para poder ver el resumen.");
                 return;
             }
+
+            // Actualizar el título del modal según el filtro de día activo
+            const tituloModal = document.getElementById("resumen-titulo");
+            tituloModal.textContent = diaActivoFiltrado !== "todos"
+                ? `📊 Resumen de Rutas — ${diaActivoFiltrado}`
+                : "📊 Resumen de Rutas";
 
             // Construir datos de cada ruta
             const filas = rutasEstructuradas.map((listaRuta, indice) => {
@@ -2019,7 +2063,7 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
     <div id="modal-resumen-rutas">
         <div class="resumen-box">
             <div class="resumen-header">
-                <h2>📊 Resumen de Rutas</h2>
+                <h2 id="resumen-titulo">📊 Resumen de Rutas</h2>
                 <button class="resumen-cerrar" onclick="cerrarResumenRutas()">✕</button>
             </div>
             <table class="resumen-tabla">
