@@ -336,7 +336,6 @@
                 <select id="filtro-repartidor" onchange="aplicarFiltroDeRutaMapeada(this.value)">
                     </select>
 
-
                 <label for="hora-salida-ruta" style="margin-top:10px; color:#8e44ad; font-size:13px; font-weight:bold; display:block;">🕒 Hora de Salida a Ruta:</label>
                 <input type="time" id="hora-salida-ruta" value="" onchange="actualizarHoraSalidaRuta(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
                 
@@ -1942,7 +1941,7 @@ function crearIconoRepartidorEnVivo() {
                 bloqueOpt.style.display = "block";
                 selectFiltro.style.display = "block";
                 lblFiltro.style.display = "block";
-                btnReopt.style.display = "block";
+                btnReopt.style.display = "none";
                 if (bloqueFiltroClientes) bloqueFiltroClientes.style.display = "block";
                 rutaActivaFiltrada = "todas";
                 selectFiltro.value = "todas";
@@ -1995,11 +1994,12 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
                 return;
             }
 
-            // Actualizar el título del modal según el filtro de día activo
-            const tituloModal = document.getElementById("resumen-titulo");
-            tituloModal.textContent = diaActivoFiltrado !== "todos"
+	// Actualizar el título del modal según el filtro de día activo
+            	const tituloModal = document.getElementById("resumen-titulo");
+            	tituloModal.textContent = diaActivoFiltrado !== "todos"
                 ? `📊 Resumen de Rutas — ${diaActivoFiltrado}`
                 : "📊 Resumen de Rutas";
+
 
             // Construir datos de cada ruta
             const filas = rutasEstructuradas.map((listaRuta, indice) => {
