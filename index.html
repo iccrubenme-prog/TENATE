@@ -504,7 +504,7 @@
 
         let clientesSeleccionadosFiltro = [];
 
-        const COLORES_RUTAS_BASE = ['#3498db', '#e67e22', '#9b59b6', '#1abc9c', '#f1c40f', '#e74c3c', '#34495e', '#16a085', '#27ae60', '#d35400'];
+        const COLORES_RUTAS_BASE = ['#3498db', '#e67e22', '#9b59b6', '#7F7F7F', '#f1c40f', '#e74c3c', '#34495e', '#16a085', '#27ae60', '#d35400'];
         const COLOR_ENTREGADO = '#2ecc71'; 
 
         function obtenerColorRuta(indice) {
@@ -1429,17 +1429,33 @@ function crearIconoRepartidorEnVivo() {
                 cl.entregado = true; 
                 cl.metodoPago = m;
 
-                // Mover el cliente al final de su ruta para que el repartidor
-                // siempre vea primero los pendientes sin modificar ninguna otra función
+                // Mover al final TODOS los clientes con las mismas coordenadas que el entregado
+                // para que el repartidor siempre vea primero los pendientes
+                const FACTOR_C = 1e6;
+                const latRef = cl.lat !== null ? Math.round(parseFloat(cl.lat) * FACTOR_C) / FACTOR_C : null;
+                const lngRef = cl.lng !== null ? Math.round(parseFloat(cl.lng) * FACTOR_C) / FACTOR_C : null;
+
                 rutasEstructuradas.forEach(ruta => {
-                    const idx = ruta.findIndex(p => p.id === cl.id);
-                    if (idx === -1) return;
-                    ruta.splice(idx, 1);
+                    // Recolectar todos los clientes a mover (mismas coords o mismo id si sin coords)
+                    const aMover = [];
+                    for (let i = ruta.length - 1; i >= 0; i--) {
+                        const p = ruta[i];
+                        if (p.id === 0) continue;
+                        const mismaCoord = latRef !== null && p.lat !== null
+                            ? Math.round(parseFloat(p.lat) * FACTOR_C) / FACTOR_C === latRef &&
+                              Math.round(parseFloat(p.lng) * FACTOR_C) / FACTOR_C === lngRef
+                            : p.id === cl.id;
+                        if (mismaCoord) {
+                            aMover.unshift(ruta.splice(i, 1)[0]);
+                        }
+                    }
+                    if (aMover.length === 0) return;
+                    // Insertar todos antes del depósito de cierre
                     const idxCierre = ruta.length - 1;
                     if (idxCierre >= 0 && ruta[idxCierre].id === 0) {
-                        ruta.splice(idxCierre, 0, cl);
+                        ruta.splice(idxCierre, 0, ...aMover);
                     } else {
-                        ruta.push(cl);
+                        ruta.push(...aMover);
                     }
                 });
 
