@@ -91,6 +91,79 @@
             border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 12px; display: block; text-align: center; font-size: 12px;
         }
         .btn-resumen-rutas:hover { background: #0f2540; }
+        .btn-cierre-dia { background: #27ae60; color: white; border: none; padding: 9px; font-weight: bold; border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 12px; display: block; text-align: center; font-size: 12px; }
+        .btn-cierre-dia:hover { background: #1e8449; }
+
+        /* ===== Reporte Cierre de Día ===== */
+        #reporte-cierre-dia {
+            display:none; position:fixed; inset:0; z-index:40000;
+            background:#f0f4f8; overflow-y:auto;
+            font-family:'Segoe UI',Arial,sans-serif;
+        }
+        .cierre-header {
+            background:#1a3c5e; color:#fff; padding:16px 28px;
+            display:flex; justify-content:space-between; align-items:center;
+            position:sticky; top:0; z-index:10;
+        }
+        .cierre-header h1 { font-size:20px; margin:0; }
+        .cierre-header-btns { display:flex; gap:10px; align-items:center; }
+        .cierre-btn-accion {
+            padding:8px 16px; border:none; border-radius:6px; cursor:pointer;
+            font-size:13px; font-weight:bold;
+        }
+        .cierre-btn-excel { background:#27ae60; color:#fff; }
+        .cierre-btn-print { background:#e67e22; color:#fff; }
+        .cierre-btn-cerrar { background:rgba(255,255,255,.2); color:#fff; font-size:18px; padding:6px 12px; }
+        .cierre-body { padding:24px 28px; max-width:1100px; margin:0 auto; }
+        .cierre-meta { font-size:13px; color:#666; margin-bottom:20px; }
+        .cierre-seccion { margin-bottom:32px; }
+        .cierre-seccion h2 {
+            font-size:15px; font-weight:700; color:#1a3c5e;
+            border-bottom:2px solid #1a3c5e; padding-bottom:6px; margin-bottom:12px;
+        }
+        .cierre-tabla {
+            width:100%; border-collapse:collapse; font-size:13px;
+            background:#fff; border-radius:8px; overflow:hidden;
+            box-shadow:0 2px 8px rgba(0,0,0,.08);
+        }
+        .cierre-tabla th {
+            background:#1a3c5e; color:#fff; padding:9px 12px; text-align:right;
+        }
+        .cierre-tabla th:first-child { text-align:left; }
+        .cierre-tabla td { padding:8px 12px; border-bottom:1px solid #edf2f7; text-align:right; }
+        .cierre-tabla td:first-child { text-align:left; font-weight:600; }
+        .cierre-tabla tr.fila-total td {
+            background:#eaf1f8; font-weight:700; border-top:2px solid #1a3c5e;
+        }
+        .cierre-dos-columnas { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+        @media(max-width:700px){ .cierre-dos-columnas { grid-template-columns:1fr; } }
+        @media print {
+            @page { size: A4 landscape; margin: 8mm; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            body > *:not(#reporte-cierre-dia) { display:none !important; }
+            #reporte-cierre-dia {
+                position:static !important; display:block !important;
+                background:#fff; overflow:visible !important;
+            }
+            .cierre-header {
+                position:static !important; background:#1a3c5e !important;
+                padding:10px 16px !important;
+            }
+            .cierre-header-btns { display:none !important; }
+            .cierre-header h1 { font-size:15px !important; }
+            .cierre-body { padding:10px 14px !important; max-width:100% !important; }
+            .cierre-meta { font-size:10px !important; margin-bottom:10px !important; }
+            .cierre-dos-columnas {
+                display:grid !important; grid-template-columns:1fr 1fr !important; gap:12px !important;
+            }
+            .cierre-seccion { margin-bottom:10px !important; break-inside:avoid; }
+            .cierre-seccion h2 { font-size:10px !important; padding-bottom:3px !important; margin-bottom:6px !important; }
+            .cierre-tabla { font-size:9px !important; box-shadow:none !important; }
+            .cierre-tabla th { background:#1a3c5e !important; color:#fff !important; padding:4px 6px !important; }
+            .cierre-tabla td { padding:3px 6px !important; }
+            .cierre-tabla tr.fila-total td { background:#eaf1f8 !important; }
+            div[style*="font-weight:700"][style*="color:#27ae60"] { font-size:11px !important; margin:6px 0 8px !important; }
+        }
         #modal-resumen-rutas {
             display:none; position:fixed; inset:0; z-index:30000;
             background:rgba(0,0,0,.55); justify-content:center; align-items:center;
@@ -319,6 +392,7 @@
             <button id="adm-btn-sync" class="btn-sync" onclick="importarDatosDesdeSheets()">🔄 Sincronizar Google Sheets</button>
             <button id="adm-btn-limpiar-registros" class="btn-limpiar-registros" style="display:none;" onclick="confirmarLimpiarRegistrosPedidos()">🗑️ Limpiar Estado / Pago / Ruta / Notas</button>
             <button id="adm-btn-resumen" class="btn-resumen-rutas" style="display:none;" onclick="mostrarResumenRutas()">📊 Resumen de Rutas</button>
+            <button id="adm-btn-cierre" class="btn-cierre-dia" style="display:none;" onclick="mostrarCierreDia()">📋 Cierre de Día</button>
             
             <div class="control-rutas">
                 <label style="margin-top:0; color:#27ae60; font-size:13px; font-weight:bold; display:block;">📅 Filtrar por Día:</label>
@@ -1396,13 +1470,16 @@ function crearIconoRepartidorEnVivo() {
 
                             // T = tiempo de recorrido (duración OSRM)
                             let segs = res.routes[0].duration;
-                            let minsRecorrido = Math.round(segs / 60);
+                            // Factor corrección tráfico urbano: OSRM no considera semáforos/tráfico
+                            const FACTOR_TRAFICO = 2.3;
+                            const MINUTOS_POR_CLIENTE = 10;
+                            let minsRecorrido = Math.round((segs / 60) * FACTOR_TRAFICO);
                             let textoT = minsRecorrido > 60 ? `${Math.floor(minsRecorrido/60)}h ${minsRecorrido%60}m` : `${minsRecorrido} mins`;
 
-                            // R = tiempo de reparto (5 min promedio por cliente entregable)
-                            const MINUTOS_POR_CLIENTE = 5;
-                            let clientesEntregables = puntosValidos.filter(p => p.id !== 0).length;
-                            let minsReparto = clientesEntregables * MINUTOS_POR_CLIENTE;
+                            // R = tiempo de reparto: 10 min por coordenada única (no por cliente)
+                            const _coordsU1 = new Set(puntosValidos.filter(p => p.id !== 0 && p.lat !== null)
+                                .map(p => `${Math.round(p.lat*1e6)}_${Math.round(p.lng*1e6)}`));
+                            let minsReparto = _coordsU1.size * MINUTOS_POR_CLIENTE;
                             let textoR = minsReparto > 60 ? `${Math.floor(minsReparto/60)}h ${minsReparto%60}m` : `${minsReparto} mins`;
 
                             // Total = T + R
@@ -1415,14 +1492,22 @@ function crearIconoRepartidorEnVivo() {
                             const [hSal, mSal] = horaSalidaRuta.split(':').map(Number);
                             let minutosAcumulados = (hSal * 60) + mSal;
                             const legs = res.routes[0].legs || [];
+                            let _coordPrev1 = null, _horaCoord1 = minutosAcumulados;
                             for (let i = 0; i < puntosValidos.length; i++) {
                                 const punto = puntosValidos[i];
                                 if (i > 0 && legs[i - 1]) {
-                                    minutosAcumulados += (legs[i - 1].duration / 60);
+                                    minutosAcumulados += (legs[i - 1].duration / 60) * FACTOR_TRAFICO;
                                 }
                                 if (punto.id !== 0) {
-                                    llegadasEstimadasPorCliente[punto.id] = formatearHora(minutosAcumulados);
-                                    minutosAcumulados += MINUTOS_POR_CLIENTE; // tiempo de reparto en ese cliente
+                                    const _ck = punto.lat !== null
+                                        ? `${Math.round(punto.lat*1e6)}_${Math.round(punto.lng*1e6)}`
+                                        : `id_${punto.id}`;
+                                    if (_ck !== _coordPrev1) {
+                                        if (_coordPrev1 !== null) minutosAcumulados += MINUTOS_POR_CLIENTE;
+                                        _coordPrev1 = _ck;
+                                        _horaCoord1 = minutosAcumulados;
+                                    }
+                                    llegadasEstimadasPorCliente[punto.id] = formatearHora(_horaCoord1);
                                 }
                             }
 
@@ -1477,12 +1562,14 @@ function crearIconoRepartidorEnVivo() {
                 let colorRuta = obtenerColorRuta(indiceRuta);
 
                 const actualizarTitulo = (resRoute, puntosUsados, listaRuta, indiceRuta) => {
-                    const MINUTOS_POR_CLIENTE = 5;
-                    let minsRecorrido = Math.round(resRoute.duration / 60);
+                    const FACTOR_TRAFICO = 2.3;
+                    const MINUTOS_POR_CLIENTE = 10;
+                    let minsRecorrido = Math.round((resRoute.duration / 60) * FACTOR_TRAFICO);
                     let textoT = minsRecorrido > 60 ? `${Math.floor(minsRecorrido/60)}h ${minsRecorrido%60}m` : `${minsRecorrido} mins`;
 
-                    let clientesEntregables = puntosUsados.filter(p => p.id !== 0).length;
-                    let minsReparto = clientesEntregables * MINUTOS_POR_CLIENTE;
+                    const _coordsU2 = new Set(puntosUsados.filter(p => p.id !== 0 && p.lat !== null)
+                        .map(p => `${Math.round(p.lat*1e6)}_${Math.round(p.lng*1e6)}`));
+                    let minsReparto = _coordsU2.size * MINUTOS_POR_CLIENTE;
                     let textoR = minsReparto > 60 ? `${Math.floor(minsReparto/60)}h ${minsReparto%60}m` : `${minsReparto} mins`;
 
                     let minsTotal = minsRecorrido + minsReparto;
@@ -1493,14 +1580,22 @@ function crearIconoRepartidorEnVivo() {
                     const [hSal, mSal] = horaSalidaRuta.split(':').map(Number);
                     let minutosAcumulados = (hSal * 60) + mSal;
                     const legs = resRoute.legs || [];
+                    let _coordPrev2 = null, _horaCoord2 = minutosAcumulados;
                     for (let i = 0; i < puntosUsados.length; i++) {
                         const punto = puntosUsados[i];
                         if (i > 0 && legs[i - 1]) {
-                            minutosAcumulados += (legs[i - 1].duration / 60);
+                            minutosAcumulados += (legs[i - 1].duration / 60) * FACTOR_TRAFICO;
                         }
                         if (punto.id !== 0) {
-                            llegadasEstimadasPorCliente[punto.id] = formatearHora(minutosAcumulados);
-                            minutosAcumulados += MINUTOS_POR_CLIENTE;
+                            const _ck = punto.lat !== null
+                                ? `${Math.round(punto.lat*1e6)}_${Math.round(punto.lng*1e6)}`
+                                : `id_${punto.id}`;
+                            if (_ck !== _coordPrev2) {
+                                if (_coordPrev2 !== null) minutosAcumulados += MINUTOS_POR_CLIENTE;
+                                _coordPrev2 = _ck;
+                                _horaCoord2 = minutosAcumulados;
+                            }
+                            llegadasEstimadasPorCliente[punto.id] = formatearHora(_horaCoord2);
                         }
                     }
 
@@ -1926,6 +2021,7 @@ function crearIconoRepartidorEnVivo() {
             const btnDepot = document.getElementById("adm-btn-depot");
             const btnLimpiar = document.getElementById("adm-btn-limpiar-registros");
             const btnResumen = document.getElementById("adm-btn-resumen");
+            const btnCierre  = document.getElementById("adm-btn-cierre");
             const bloqueOpt = document.getElementById("adm-bloque-optimizacion");
             const selectFiltro = document.getElementById("filtro-repartidor");
             const lblFiltro = document.getElementById("lbl-filtro-vista");
@@ -1938,6 +2034,7 @@ function crearIconoRepartidorEnVivo() {
                 btnDepot.style.display = "block";
                 btnLimpiar.style.display = "block";
                 btnResumen.style.display = "block";
+                btnCierre.style.display  = "block";
                 bloqueOpt.style.display = "block";
                 selectFiltro.style.display = "block";
                 lblFiltro.style.display = "block";
@@ -1952,6 +2049,7 @@ function crearIconoRepartidorEnVivo() {
                 btnDepot.style.display = "none";
                 btnLimpiar.style.display = "none";
                 btnResumen.style.display = "none";
+                btnCierre.style.display  = "none";
                 bloqueOpt.style.display = "none";
                 selectFiltro.style.display = "none";
                 lblFiltro.style.display = "none";
@@ -1996,10 +2094,6 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
 
 	// Actualizar el título del modal según el filtro de día activo
             	const tituloModal = document.getElementById("resumen-titulo");
-            	tituloModal.textContent = diaActivoFiltrado !== "todos"
-                ? `📊 Resumen de Rutas — ${diaActivoFiltrado}`
-                : "📊 Resumen de Rutas";
-
 
             // Construir datos de cada ruta
             const filas = rutasEstructuradas.map((listaRuta, indice) => {
@@ -2027,6 +2121,11 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
             // Ordenar de mayor a menor tiempo total de recorrido
             filas.sort((a, b) => b.minutos - a.minutos);
 
+            // Título con total de clientes
+            const totalClientesGlobal = filas.reduce((s, f) => s + f.totalClientes, 0);
+            const sufijoDia = diaActivoFiltrado !== "todos" ? ` — ${diaActivoFiltrado}` : "";
+            tituloModal.textContent = `📊 Resumen de Rutas${sufijoDia} — ${totalClientesGlobal} clientes`;
+
             const tbody = document.getElementById("resumen-tabla-body");
             tbody.innerHTML = "";
             filas.forEach(f => {
@@ -2046,6 +2145,198 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
             document.getElementById("modal-resumen-rutas").classList.add("abierto");
         }
 
+        function cerrarCierreDia() {
+            document.getElementById("reporte-cierre-dia").style.display = "none";
+        }
+
+        function mostrarCierreDia() {
+            // Determinar subconjunto de clientes según filtros activos
+            let clientesFiltrados = clientes.filter(c => c.entregado); // solo entregados
+            if (diaActivoFiltrado !== "todos") {
+                clientesFiltrados = clientesFiltrados.filter(c => c.dia === diaActivoFiltrado);
+            }
+            if (rutaActivaFiltrada !== "todas") {
+                const idxRuta = parseInt(rutaActivaFiltrada);
+                if (!isNaN(idxRuta) && rutasEstructuradas[idxRuta]) {
+                    const idsEnRuta = new Set(rutasEstructuradas[idxRuta].filter(p => p.id !== 0).map(p => p.id));
+                    clientesFiltrados = clientesFiltrados.filter(c => idsEnRuta.has(c.id));
+                }
+            }
+
+            // Título y meta
+            const tituloSufijo = diaActivoFiltrado !== "todos" ? ` — ${diaActivoFiltrado}` : "";
+            document.getElementById("cierre-titulo").textContent = `📋 Cierre de Día${tituloSufijo}`;
+            const total = clientesFiltrados.length;
+            const pendientes = clientes.filter(c => !c.entregado && (diaActivoFiltrado === "todos" || c.dia === diaActivoFiltrado)).length;
+            document.getElementById("cierre-meta").textContent =
+                `Entregados: ${total}  |  Pendientes: ${pendientes}  |  Generado: ${new Date().toLocaleString('es-MX')}`;
+
+            // Obtener tipos únicos de pedido (Familiar, Individual, Personalizado, etc.)
+            const tiposPedido = [...new Set(clientes.map(c => (c.pedido || "Sin tipo").trim()))].filter(Boolean).sort();
+            const metodos = ["Efectivo","Tarjeta","Transferencia","Pagado (Anticipado)","No pagado"];
+
+            // ── Construir datos ──────────────────────────────────────────────────────
+            // Tabla 1: Paquetes × Método Pago (cantidad)
+            // Tabla 2: Paquetes × Día (cantidad)
+            // Tabla 3: Ingreso Paquetes × Método Pago ($)
+            // Tabla 4: Ingreso Paquetes × Día ($)
+
+            const diasUnicos = [...new Set(clientesFiltrados.map(c => (c.dia || "Sin día").trim()))].sort();
+
+            function buildMatriz(filas, columnas, keyFila, keyCol, clientes) {
+                const m = {};
+                filas.forEach(f => { m[f] = {}; columnas.forEach(c => { m[f][c] = []; }); m[f]["__total__"] = []; });
+                clientes.forEach(cl => {
+                    const f = (cl[keyFila] || "Sin tipo").trim();
+                    const c = (cl[keyCol] || "Sin dato").trim();
+                    if (m[f] && m[f][c] !== undefined) m[f][c].push(cl);
+                    if (m[f]) m[f]["__total__"].push(cl);
+                });
+                return m;
+            }
+
+            const matrizMetodo = buildMatriz(tiposPedido, metodos, "pedido", "metodoPago", clientesFiltrados);
+            const matrizDia    = buildMatriz(tiposPedido, diasUnicos, "pedido", "dia", clientesFiltrados);
+
+            function renderTabla(titulo, filas, columnas, matrizData, valorFn, prefijo) {
+                const colsTh = columnas.map(c => `<th>${c}</th>`).join("") + "<th>Total</th>";
+                let rows = filas.map(fila => {
+                    const celdas = columnas.map(col => {
+                        const v = valorFn(matrizData[fila]?.[col] || []);
+                        return `<td>${v}</td>`;
+                    }).join("");
+                    const tot = valorFn(matrizData[fila]?.["__total__"] || []);
+                    return `<tr><td>${fila}</td>${celdas}<td>${tot}</td></tr>`;
+                }).join("");
+
+                // Fila Total
+                const totCols = columnas.map(col => {
+                    const acum = filas.reduce((a, f) => a.concat(matrizData[f]?.[col] || []), []);
+                    return `<td>${valorFn(acum)}</td>`;
+                }).join("");
+                const totTotal = valorFn(clientesFiltrados.filter(c => !columnas.length || true).reduce((a,_,__)=>a, clientesFiltrados));
+                // total general
+                const todosAcum = filas.reduce((a, f) => a.concat(matrizData[f]?.["__total__"] || []), []);
+                const totGen = valorFn(todosAcum);
+                rows += `<tr class="fila-total"><td>Total</td>${totCols}<td>${totGen}</td></tr>`;
+
+                return `
+                <div class="cierre-seccion">
+                    <h2>${titulo}</h2>
+                    <table class="cierre-tabla">
+                        <thead><tr><th>Paquetes</th>${colsTh}</tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>`;
+            }
+
+            const fmtN = arr => arr.length || "—";
+            const fmtM = arr => arr.length ? `$${arr.reduce((s,c)=>s+(parseFloat(c.monto)||0),0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})}` : "—";
+
+            // Aseguramos que el Total de la sección de días solo cuente los clientes que aparecen en esa tabla
+            // (puede haber días sin entregas si el filtro no los muestra)
+
+            let html = `<div class="cierre-dos-columnas">`;
+            html += renderTabla("Conteo de Paquetes por Método de Pago", tiposPedido, metodos, matrizMetodo, fmtN, "");
+            html += renderTabla("Conteo de Paquetes por Día", tiposPedido, diasUnicos, matrizDia, fmtN, "");
+            html += `</div>`;
+            html += `<div style="margin:8px 0 20px; font-size:13px; font-weight:700; color:#1a3c5e;">Ingreso</div>`;
+            html += `<div class="cierre-dos-columnas">`;
+            html += renderTabla("Ingreso por Método de Pago", tiposPedido, metodos, matrizMetodo, fmtM, "$");
+            html += renderTabla("Ingreso por Día", tiposPedido, diasUnicos, matrizDia, fmtM, "$");
+            html += `</div>`;
+
+            document.getElementById("cierre-contenido").innerHTML = html;
+            document.getElementById("reporte-cierre-dia").style.display = "block";
+            window._cierreDatos = { clientesFiltrados, tiposPedido, metodos, diasUnicos, matrizMetodo, matrizDia, diaActivoFiltrado };
+        }
+
+        function exportarCierreExcel() {
+            const d = window._cierreDatos;
+            if (!d) return;
+            const { tiposPedido, metodos, diasUnicos, matrizMetodo, matrizDia, diaActivoFiltrado } = d;
+            const sufijo = diaActivoFiltrado !== "todos" ? ` - ${diaActivoFiltrado}` : "";
+
+            const azul   = "#1A3C5E";
+            const azulCl = "#EAF1F8";
+            const verde  = "#27ae60";
+
+            const fmtN = arr => arr.length || 0;
+            const fmtM = arr => arr.length
+                ? arr.reduce((s,c)=>s+(parseFloat(c.monto)||0),0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})
+                : "-";
+
+            const tdStyle = `style="border:1px solid #ccc; padding:6px 10px; text-align:right;"`;
+            const tdLStyle = `style="border:1px solid #ccc; padding:6px 10px; text-align:left; font-weight:600;"`;
+            const thStyle = c => `style="border:1px solid #ccc; padding:7px 10px; background:${azul}; color:#fff; text-align:${c==='Paquetes'?'left':'right'};"`;
+            const trTotStyle = `style="background:${azulCl}; font-weight:700;"`;
+
+            function buildTablaHTML(titulo, filas, columnas, matrizData, valorFn) {
+                const ths = [`<th ${thStyle('Paquetes')}>Paquetes</th>`,
+                    ...columnas.map(c=>`<th ${thStyle(c)}>${c}</th>`),
+                    `<th ${thStyle('Total')}>Total</th>`].join("");
+                const rows = filas.map(f => {
+                    const cds = columnas.map(col=>`<td ${tdStyle}>${valorFn(matrizData[f]?.[col]||[])}</td>`).join("");
+                    const tot = valorFn(matrizData[f]?.["__total__"]||[]);
+                    return `<tr><td ${tdLStyle}>${f}</td>${cds}<td ${tdStyle}>${tot}</td></tr>`;
+                }).join("");
+                const totCols = columnas.map(col=>{
+                    const acum = filas.reduce((a,f2)=>a.concat(matrizData[f2]?.[col]||[]),[]);
+                    return `<td ${tdStyle}>${valorFn(acum)}</td>`;
+                }).join("");
+                const todosAcum = filas.reduce((a,f2)=>a.concat(matrizData[f2]?.["__total__"]||[]),[]);
+                const totGen = `<td ${tdStyle}>${valorFn(todosAcum)}</td>`;
+
+                return `
+                <p style="font-weight:700;color:${azul};font-size:13px;margin:14px 0 6px;">${titulo}</p>
+                <table style="border-collapse:collapse;width:100%;font-family:Calibri,Arial;font-size:12px;margin-bottom:18px;">
+                    <thead><tr>${ths}</tr></thead>
+                    <tbody>
+                        ${rows}
+                        <tr ${trTotStyle}><td ${tdLStyle}>Total</td>${totCols}${totGen}</tr>
+                    </tbody>
+                </table>`;
+            }
+
+            let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+                xmlns:x="urn:schemas-microsoft-com:office:excel"
+                xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>Cierre de Día</x:Name>
+<x:WorksheetOptions><x:Orientation>Landscape</x:Orientation></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+</head><body style="font-family:Calibri,Arial;font-size:12px;padding:20px;">`;
+
+            html += `<p style="font-size:16px;font-weight:700;color:${azul};margin-bottom:4px;">📋 Cierre de Día${sufijo}</p>`;
+            html += `<p style="color:#666;font-size:11px;margin-bottom:16px;">Generado: ${new Date().toLocaleString('es-MX')}</p>`;
+
+            html += `<table style="width:100%;margin-bottom:24px;"><tr>`;
+            html += `<td style="width:50%;vertical-align:top;padding-right:12px;">`;
+            html += buildTablaHTML("Conteo de Paquetes por Método de Pago", tiposPedido, metodos, matrizMetodo, fmtN);
+            html += `</td><td style="width:50%;vertical-align:top;padding-left:12px;">`;
+            html += buildTablaHTML("Conteo de Paquetes por Día", tiposPedido, diasUnicos, matrizDia, fmtN);
+            html += `</td></tr></table>`;
+
+            html += `<p style="font-weight:700;color:${verde};font-size:14px;margin:8px 0 14px;">Ingreso</p>`;
+            html += `<table style="width:100%;"><tr>`;
+            html += `<td style="width:50%;vertical-align:top;padding-right:12px;">`;
+            html += buildTablaHTML("Ingreso por Método de Pago", tiposPedido, metodos, matrizMetodo, fmtM);
+            html += `</td><td style="width:50%;vertical-align:top;padding-left:12px;">`;
+            html += buildTablaHTML("Ingreso por Día", tiposPedido, diasUnicos, matrizDia, fmtM);
+            html += `</td></tr></table>`;
+
+            html += `</body></html>`;
+
+            const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `Cierre_Dia${sufijo.replace(/\s/g,'_')}.xls`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
         function regresarAPantallaDeRoles() {
             document.getElementById("box-seleccion-ruta-driver").style.display = "none";
             document.getElementById("role-gate-modal").style.display = "flex";
@@ -2059,7 +2350,22 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
         document.getElementById("hora-salida-ruta").value = horaSalidaRuta;
         importarDatosDesdeSheets();
     </script>
-    <!-- Modal resumen de rutas -->
+    <!-- Reporte Cierre de Día -->
+    <div id="reporte-cierre-dia">
+        <div class="cierre-header">
+            <h1 id="cierre-titulo">📋 Cierre de Día</h1>
+            <div class="cierre-header-btns">
+                <button class="cierre-btn-accion cierre-btn-excel" onclick="exportarCierreExcel()">⬇️ Exportar Excel</button>
+                <button class="cierre-btn-accion cierre-btn-print" onclick="window.print()">🖨️ Imprimir / PDF</button>
+                <button class="cierre-btn-accion cierre-btn-cerrar" onclick="cerrarCierreDia()">✕</button>
+            </div>
+        </div>
+        <div class="cierre-body">
+            <p class="cierre-meta" id="cierre-meta"></p>
+            <div id="cierre-contenido"></div>
+        </div>
+    </div>
+</body>
     <div id="modal-resumen-rutas">
         <div class="resumen-box">
             <div class="resumen-header">
