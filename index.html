@@ -1428,6 +1428,21 @@ function crearIconoRepartidorEnVivo() {
             }).then(() => {
                 cl.entregado = true; 
                 cl.metodoPago = m;
+
+                // Mover el cliente al final de su ruta para que el repartidor
+                // siempre vea primero los pendientes sin modificar ninguna otra función
+                rutasEstructuradas.forEach(ruta => {
+                    const idx = ruta.findIndex(p => p.id === cl.id);
+                    if (idx === -1) return;
+                    ruta.splice(idx, 1);
+                    const idxCierre = ruta.length - 1;
+                    if (idxCierre >= 0 && ruta[idxCierre].id === 0) {
+                        ruta.splice(idxCierre, 0, cl);
+                    } else {
+                        ruta.push(cl);
+                    }
+                });
+
                 refrescarMapaYListasVisuales(); 
                 if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
             });
