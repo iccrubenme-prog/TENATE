@@ -779,7 +779,7 @@
                         if (rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
 
                     } else if (huboCambiosEstatus) {
-                        // Solo actualizar estatus dentro de rutasEstructuradas (más ligero)
+                        // Actualizar estatus dentro de rutasEstructuradas
                         rutasEstructuradas.forEach(ruta => {
                             ruta.forEach(p => {
                                 if (p.id === 0) return;
@@ -788,6 +788,8 @@
                             });
                         });
                         refrescarMapaYListasVisuales();
+                        // Recalcular tiempos estimados ya que cambiaron los clientes pendientes
+                        if (rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
                     }
                 })
                 .catch(() => { /* fallo silencioso */ });
@@ -795,7 +797,7 @@
 
         function iniciarSincroniaLigeraAutomatica() {
             if (intervaloSincroniaLigera) clearInterval(intervaloSincroniaLigera);
-            intervaloSincroniaLigera = setInterval(sincronizacionLigeraEstatus, 10000); // cada 10 segundos
+            intervaloSincroniaLigera = setInterval(sincronizacionLigeraEstatus, 2000); // cada 10 segundos
         }
 
         function construirMapaNombresPorRuta() {
