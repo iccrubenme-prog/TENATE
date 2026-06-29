@@ -868,30 +868,26 @@
 
         function actualizarSelectoresDeRutaDinamicos() {
     const cantRutas = rutasEstructuradas.length;
+
+    // Construir mapa: índice de ruta (0-based) → nombre del repartidor (quien)
     const nombresPorRuta = construirMapaNombresPorRuta();
 
     const selectFiltro = document.getElementById("filtro-repartidor");
     const valorPrevioFiltro = selectFiltro.value || "todas";
     selectFiltro.innerHTML = '<option value="todas">🌍 Ver Todas las Rutas (Administrador)</option>';
+    for (let r = 0; r < cantRutas; r++) {
+        const etiqueta = nombresPorRuta[r] ? `Ruta ${nombresPorRuta[r]}` : `Ruta ${r + 1}`;
+        selectFiltro.innerHTML += `<option value="${r}">🚗 ${etiqueta}</option>`;
+    }
+    selectFiltro.value = valorPrevioFiltro;
+    if(!selectFiltro.value || parseInt(selectFiltro.value) >= cantRutas) selectFiltro.value = "todas";
 
     const selectGate = document.getElementById("select-ruta-repartidor-gate");
     selectGate.innerHTML = '';
-
     for (let r = 0; r < cantRutas; r++) {
-        // Solo mostrar rutas que tengan clientes del día activo (o todos los días si no hay filtro)
-        const tieneClientes = rutasEstructuradas[r].some(p =>
-            p.id !== 0 &&
-            (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
-        );
-        if (!tieneClientes) continue;
-
         const etiqueta = nombresPorRuta[r] ? `Ruta ${nombresPorRuta[r]}` : `Ruta ${r + 1}`;
-        selectFiltro.innerHTML += `<option value="${r}">🚗 ${etiqueta}</option>`;
-        selectGate.innerHTML  += `<option value="${r}">${etiqueta}</option>`;
+        selectGate.innerHTML += `<option value="${r}">${etiqueta}</option>`;
     }
-
-    selectFiltro.value = valorPrevioFiltro;
-    if (!selectFiltro.value || selectFiltro.value === "") selectFiltro.value = "todas";
 }
 
         function poblarFiltroDia() {
@@ -915,8 +911,6 @@
         function aplicarFiltroDia(dia) {
             diaActivoFiltrado = dia;
             localStorage.setItem("tenate_filtro_dia", dia);
-            actualizarSelectoresDeRutaDinamicos();
-            construirListaCheckboxClientes();
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
