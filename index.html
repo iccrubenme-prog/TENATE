@@ -460,6 +460,31 @@
         let clientes = [];
         let rutasEstructuradas = [];
         let tiemposEstimadosRutas = {};
+        // Factor de tráfico dinámico según día y hora (calibrado para zona urbana Puebla)
+        function obtenerFactorTrafico() {
+            const ahora = new Date();
+            const hora  = ahora.getHours() + ahora.getMinutes() / 60; // ej. 8.5 = 8:30
+            const dia   = ahora.getDay(); // 0=Dom, 1=Lun, ..., 6=Sáb
+
+            // Madrugada: todos los días (23:00-6:00)
+            if (hora >= 23 || hora < 6) return 1.4;
+
+            // Domingo: tráfico ligero todo el día
+            if (dia === 0) return 1.6;
+
+            // Sábado
+            if (dia === 6) {
+                if (hora >= 11 && hora < 15) return 2.5; // pico Sábado
+                return 1.9;
+            }
+
+            // Lunes-Viernes
+            if (hora >= 7   && hora < 9.5)  return 3.2; // pico mañana
+            if (hora >= 13  && hora < 15)   return 2.8; // pico mediodía
+            if (hora >= 18  && hora < 20)   return 3.5; // pico tarde (el peor)
+            return 2.2; // flujo normal resto del día
+        }
+
         function obtenerHoraActualHHMM() {
             const ahora = new Date();
             return `${ahora.getHours().toString().padStart(2,'0')}:${ahora.getMinutes().toString().padStart(2,'0')}`;
@@ -467,6 +492,7 @@
         let horaSalidaRuta = obtenerHoraActualHHMM();
         let horaSalidaEditadaManualmente = false; // Si el usuario la cambia a mano, dejamos de autoactualizarla
         let llegadasEstimadasPorCliente = {}; // id cliente -> "HH:MM" estimado de llegada
+        let trayectosMinutosPorCliente  = {}; // id cliente -> minutos de trayecto al llegar a ese punto
 
         function actualizarHoraSalidaRuta(valor) {
             horaSalidaEditadaManualmente = true;
@@ -638,6 +664,7 @@
             clientes = [];
             tiemposEstimadosRutas = {};
             llegadasEstimadasPorCliente = {};
+            trayectosMinutosPorCliente = {};
 
             fetch(URL_GOOGLE_SCRIPT)
                 .then(res => res.json())
@@ -841,26 +868,30 @@
 
         function actualizarSelectoresDeRutaDinamicos() {
     const cantRutas = rutasEstructuradas.length;
-
-    // Construir mapa: índice de ruta (0-based) → nombre del repartidor (quien)
     const nombresPorRuta = construirMapaNombresPorRuta();
 
     const selectFiltro = document.getElementById("filtro-repartidor");
     const valorPrevioFiltro = selectFiltro.value || "todas";
     selectFiltro.innerHTML = '<option value="todas">🌍 Ver Todas las Rutas (Administrador)</option>';
-    for (let r = 0; r < cantRutas; r++) {
-        const etiqueta = nombresPorRuta[r] ? `Ruta ${nombresPorRuta[r]}` : `Ruta ${r + 1}`;
-        selectFiltro.innerHTML += `<option value="${r}">🚗 ${etiqueta}</option>`;
-    }
-    selectFiltro.value = valorPrevioFiltro;
-    if(!selectFiltro.value || parseInt(selectFiltro.value) >= cantRutas) selectFiltro.value = "todas";
 
     const selectGate = document.getElementById("select-ruta-repartidor-gate");
     selectGate.innerHTML = '';
+
     for (let r = 0; r < cantRutas; r++) {
+        // Solo mostrar rutas que tengan clientes del día activo (o todos los días si no hay filtro)
+        const tieneClientes = rutasEstructuradas[r].some(p =>
+            p.id !== 0 &&
+            (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+        );
+        if (!tieneClientes) continue;
+
         const etiqueta = nombresPorRuta[r] ? `Ruta ${nombresPorRuta[r]}` : `Ruta ${r + 1}`;
-        selectGate.innerHTML += `<option value="${r}">${etiqueta}</option>`;
+        selectFiltro.innerHTML += `<option value="${r}">🚗 ${etiqueta}</option>`;
+        selectGate.innerHTML  += `<option value="${r}">${etiqueta}</option>`;
     }
+
+    selectFiltro.value = valorPrevioFiltro;
+    if (!selectFiltro.value || selectFiltro.value === "") selectFiltro.value = "todas";
 }
 
         function poblarFiltroDia() {
@@ -884,6 +915,8 @@
         function aplicarFiltroDia(dia) {
             diaActivoFiltrado = dia;
             localStorage.setItem("tenate_filtro_dia", dia);
+            actualizarSelectoresDeRutaDinamicos();
+            construirListaCheckboxClientes();
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
@@ -1513,7 +1546,7 @@ function crearIconoRepartidorEnVivo() {
                             // T = tiempo de recorrido (duración OSRM)
                             let segs = res.routes[0].duration;
                             // Factor corrección tráfico urbano: OSRM no considera semáforos/tráfico
-                            const FACTOR_TRAFICO = 2.3;
+                            const FACTOR_TRAFICO = obtenerFactorTrafico();
                             const MINUTOS_POR_CLIENTE = 10;
                             let minsRecorrido = Math.round((segs / 60) * FACTOR_TRAFICO);
                             let textoT = minsRecorrido > 60 ? `${Math.floor(minsRecorrido/60)}h ${minsRecorrido%60}m` : `${minsRecorrido} mins`;
@@ -1535,10 +1568,12 @@ function crearIconoRepartidorEnVivo() {
                             let minutosAcumulados = (hSal * 60) + mSal;
                             const legs = res.routes[0].legs || [];
                             let _coordPrev1 = null, _horaCoord1 = minutosAcumulados;
+                            let _minsTrayectoTramo = 0; // minutos de trayecto del tramo actual
                             for (let i = 0; i < puntosValidos.length; i++) {
                                 const punto = puntosValidos[i];
                                 if (i > 0 && legs[i - 1]) {
-                                    minutosAcumulados += (legs[i - 1].duration / 60) * FACTOR_TRAFICO;
+                                    _minsTrayectoTramo = (legs[i - 1].duration / 60) * FACTOR_TRAFICO;
+                                    minutosAcumulados += _minsTrayectoTramo;
                                 }
                                 if (punto.id !== 0) {
                                     const _ck = punto.lat !== null
@@ -1550,6 +1585,7 @@ function crearIconoRepartidorEnVivo() {
                                         _horaCoord1 = minutosAcumulados;
                                     }
                                     llegadasEstimadasPorCliente[punto.id] = formatearHora(_horaCoord1);
+                                    trayectosMinutosPorCliente[punto.id] = Math.round(_minsTrayectoTramo);
                                 }
                             }
 
@@ -1604,7 +1640,7 @@ function crearIconoRepartidorEnVivo() {
                 let colorRuta = obtenerColorRuta(indiceRuta);
 
                 const actualizarTitulo = (resRoute, puntosUsados, listaRuta, indiceRuta) => {
-                    const FACTOR_TRAFICO = 2.3;
+                    const FACTOR_TRAFICO = obtenerFactorTrafico();
                     const MINUTOS_POR_CLIENTE = 10;
                     let minsRecorrido = Math.round((resRoute.duration / 60) * FACTOR_TRAFICO);
                     let textoT = minsRecorrido > 60 ? `${Math.floor(minsRecorrido/60)}h ${minsRecorrido%60}m` : `${minsRecorrido} mins`;
@@ -1623,10 +1659,12 @@ function crearIconoRepartidorEnVivo() {
                     let minutosAcumulados = (hSal * 60) + mSal;
                     const legs = resRoute.legs || [];
                     let _coordPrev2 = null, _horaCoord2 = minutosAcumulados;
+                    let _minsTrayecto2 = 0;
                     for (let i = 0; i < puntosUsados.length; i++) {
                         const punto = puntosUsados[i];
                         if (i > 0 && legs[i - 1]) {
-                            minutosAcumulados += (legs[i - 1].duration / 60) * FACTOR_TRAFICO;
+                            _minsTrayecto2 = (legs[i - 1].duration / 60) * FACTOR_TRAFICO;
+                            minutosAcumulados += _minsTrayecto2;
                         }
                         if (punto.id !== 0) {
                             const _ck = punto.lat !== null
@@ -1638,6 +1676,7 @@ function crearIconoRepartidorEnVivo() {
                                 _horaCoord2 = minutosAcumulados;
                             }
                             llegadasEstimadasPorCliente[punto.id] = formatearHora(_horaCoord2);
+                            trayectosMinutosPorCliente[punto.id] = Math.round(_minsTrayecto2);
                         }
                     }
 
@@ -1763,6 +1802,7 @@ function crearIconoRepartidorEnVivo() {
             rutasOptimizadasActivas = true;
             tiemposEstimadosRutas = {};
             llegadasEstimadasPorCliente = {};
+            trayectosMinutosPorCliente = {};
 
             // ─── PASO 1: Agrupar clientes con coordenadas idénticas ──────────────────
             // Los clientes con exactamente las mismas coordenadas forman un "supercliente".
