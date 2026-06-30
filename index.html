@@ -1227,6 +1227,9 @@
 
 
                     numeroPin++;
+                    // Si el cliente tiene orden fijo guardado (cte), usarlo como número del pin
+                    // para que el orden visual no cambie aunque el cliente haya sido movido al final tras entrega
+                    const numeroPinMostrar = (punto.cte !== null && punto.cte !== undefined) ? punto.cte : numeroPin;
 
                     let colorMarcadorFinal = punto.entregado ? COLOR_ENTREGADO : colorFichaActual;
 
@@ -1248,7 +1251,7 @@ if (punto.notas && punto.notas.trim() !== "") {
 
                         const marcador = L.marker([punto.lat, punto.lng], {
 
-                            icon: crearIconoSvgConNumero(colorMarcadorFinal, numeroPin)
+                            icon: crearIconoSvgConNumero(colorMarcadorFinal, numeroPinMostrar)
 
                         }).addTo(map);
 
@@ -1350,7 +1353,7 @@ if (punto.notas && punto.notas.trim() !== "") {
             li.onclick = function() { enfocarYResaltarCliente(punto.id, punto.lat, punto.lng); };
 
             li.innerHTML = `
-                <span class="badge" style="background-color: ${colorMarcadorFinal}">${punto.lat === null ? '•' : numeroPin}</span>
+                <span class="badge" style="background-color: ${colorMarcadorFinal}">${punto.lat === null ? '•' : numeroPinMostrar}</span>
                 <strong style="font-size: 15px; color:#000;">${punto.nombre}${punto.pedido ? ` [${punto.pedido}]` : ''}</strong><br>
                 ${llegadasEstimadasPorCliente[punto.id] && !punto.entregado ? `<span class="hora-llegada-tag">🕒 Llegada estimada: ${llegadasEstimadasPorCliente[punto.id]}</span><br>` : ''}
                 ${htmlNotas}
