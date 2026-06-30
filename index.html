@@ -1736,8 +1736,18 @@ function crearIconoRepartidorEnVivo() {
                     marcadorMiGpsActual = L.marker([latVivo, lngVivo], { icon: crearIconoRepartidorEnVivo() }).addTo(map);
                     marcadorMiGpsActual.bindPopup("<b>Mi Ubicación Actual</b><br>Punto de partida en vivo").openPopup();
 
-                    let pendientes = rutasEstructuradas[idxRuta].filter(p => p.id !== 0 && p.lat !== null && p.lng !== null && !p.entregado);
-                    let estaticos = rutasEstructuradas[idxRuta].filter(p => p.id === 0 || p.lat === null || p.lng === null || p.entregado);
+                    // Solo reoptimizamos los clientes del día activo (si hay filtro de día).
+                    // Los clientes de otros días en la misma ruta NO se tocan ni renumeran.
+                    const enDiaActivo = p => diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado;
+
+                    let pendientes = rutasEstructuradas[idxRuta].filter(p =>
+                        p.id !== 0 && p.lat !== null && p.lng !== null && !p.entregado && enDiaActivo(p)
+                    );
+                    let estaticos = rutasEstructuradas[idxRuta].filter(p =>
+                        p.id !== 0 && (p.id === 0 || p.lat === null || p.lng === null || p.entregado || !enDiaActivo(p))
+                    );
+                    // Clientes de OTROS días: se conservan exactamente igual, con su #Cte intacto
+                    const otrosDias = rutasEstructuradas[idxRuta].filter(p => p.id !== 0 && !enDiaActivo(p));
 
                     if (pendientes.length === 0) {
                         alert("No tienes clientes pendientes con coordenadas para reoptimizar.");
@@ -1747,13 +1757,21 @@ function crearIconoRepartidorEnVivo() {
                     // Se optimiza partiendo desde el GPS actual del repartidor
                     let subRutaReoptimizada = optimizarOrdenInternoVecino(pendientes, gpsRepartidor);
 
-                    // Al reconstruir para la vista del repartidor: Punto Inicial (deposito), Recorrido optimizado (con el candado de cierre integrado), y los estáticos / entregados al final.
-                    rutasEstructuradas[idxRuta] = [deposito, ...subRutaReoptimizada.slice(1), ...estaticos.filter(p => p.id !== 0)];
+                    // Reconstruir: depósito + recorrido optimizado (del día activo) + estáticos/entregados del día activo + otros días intactos
+                    const estaticosDelDia = estaticos.filter(p => enDiaActivo(p));
+                    rutasEstructuradas[idxRuta] = [
+                        deposito,
+                        ...subRutaReoptimizada.slice(1),
+                        ...estaticosDelDia,
+                        ...otrosDias
+                    ];
 
-                    // Recalcular y persistir el orden fijo (#Cte) según la nueva posición de visita
+                    // Recalcular el orden fijo (#Cte) SOLO para los clientes del día activo
+                    // (recorrido optimizado + estáticos/entregados de ese día), respetando la
+                    // numeración que ya tenían los clientes de otros días dentro de la misma ruta.
                     let ordenVisita = 0;
                     let asignacionesCte = [];
-                    rutasEstructuradas[idxRuta].forEach(p => {
+                    [...subRutaReoptimizada.slice(1), ...estaticosDelDia].forEach(p => {
                         if (p.id === 0) return;
                         ordenVisita++;
                         p.cte = ordenVisita;
