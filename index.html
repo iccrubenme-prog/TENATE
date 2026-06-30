@@ -2100,7 +2100,56 @@ function crearIconoRepartidorEnVivo() {
             }
             // Agregamos forzosamente "El Tenate" (deposito) al final de la secuencia para cerrar el circuito completo
             subRutaOptima.push(deposito);
+
+            // ── Mejora local 2-opt ──────────────────────────────────────────────────
+            // El vecino más cercano es voraz: puede dejar un punto "atrapado" lejos del
+            // resto, forzando un viaje de ida y vuelta caro al cerrar el circuito hacia
+            // el depósito. 2-opt revisa pares de tramos y, si invertir el segmento entre
+            // ellos reduce la distancia TOTAL del circuito (incluyendo el regreso al
+            // depósito), aplica el cambio. Se repite hasta que ya no hay mejoras posibles.
+            subRutaOptima = aplicarMejora2Opt(subRutaOptima);
+
             return subRutaOptima;
+        }
+
+        function distanciaEntre(a, b) {
+            const dLat = a.lat - b.lat;
+            const dLng = a.lng - b.lng;
+            return Math.sqrt(dLat * dLat + dLng * dLng);
+        }
+
+        function aplicarMejora2Opt(ruta) {
+            // ruta[0] = punto de arranque (depósito o GPS), ruta[ultimo] = depósito de cierre.
+            // Solo reordenamos el tramo intermedio (índices 1 .. n-2); los extremos quedan fijos.
+            const n = ruta.length;
+            if (n < 4) return ruta; // muy pocos puntos para que 2-opt tenga sentido
+
+            let mejorado = true;
+            let intentos = 0;
+            const MAX_INTENTOS = 200; // límite de seguridad para evitar bucles largos en rutas grandes
+
+            while (mejorado && intentos < MAX_INTENTOS) {
+                mejorado = false;
+                intentos++;
+
+                for (let i = 1; i < n - 2; i++) {
+                    for (let j = i + 1; j < n - 1; j++) {
+                        const a = ruta[i - 1], b = ruta[i];
+                        const c = ruta[j],     d = ruta[j + 1];
+
+                        const distActual = distanciaEntre(a, b) + distanciaEntre(c, d);
+                        const distNueva  = distanciaEntre(a, c) + distanciaEntre(b, d);
+
+                        // Si invertir el segmento [i..j] acorta el circuito, lo aplicamos
+                        if (distNueva < distActual - 1e-9) {
+                            const segmentoInvertido = ruta.slice(i, j + 1).reverse();
+                            ruta = [...ruta.slice(0, i), ...segmentoInvertido, ...ruta.slice(j + 1)];
+                            mejorado = true;
+                        }
+                    }
+                }
+            }
+            return ruta;
         }
 
         function mostrarSeccionRutaRepartidor() {
