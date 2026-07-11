@@ -710,9 +710,8 @@
                             if (match) {
                                 let idx = parseInt(match[0]) - 1;
                                 if (idx >= 0 && idx < maxRutaNum) rutasEstructuradas[idx].push(c);
-                            } else {
-                                rutasEstructuradas[0].push(c);
                             }
+                            // Si no tiene ruta asignada, NO se agrega a ninguna ruta
                         });
                         // Ordenar cada ruta según el orden fijo guardado en la columna #Cte.
                         // Los clientes sin valor de #Cte (legado) se mantienen al final en el
@@ -725,7 +724,7 @@
                         });
                     } else {
                         rutasOptimizadasActivas = false;
-                        rutasEstructuradas = [[deposito, ...clientes, deposito]];
+                        rutasEstructuradas = [];
                     }
 
                     actualizarSelectoresDeRutaDinamicos();
@@ -788,9 +787,11 @@
                         rutasEstructuradas = Array.from({ length: maxRutaNum }, () => [deposito]);
                         clientes.forEach(c => {
                             const m = (c.rutaAsignadaBase || "").match(/\d+/);
-                            const idx = m ? parseInt(m[0]) - 1 : 0;
-                            if (idx >= 0 && idx < maxRutaNum) rutasEstructuradas[idx].push(c);
-                            else rutasEstructuradas[0].push(c);
+                            if (m) {
+                                const idx = parseInt(m[0]) - 1;
+                                if (idx >= 0 && idx < maxRutaNum) rutasEstructuradas[idx].push(c);
+                            }
+                            // Sin ruta asignada: no se agrega a ninguna ruta
                         });
 
                         // Ordenar cada ruta por cte (orden fijo de visita)
@@ -1379,6 +1380,72 @@ if (punto.notas && punto.notas.trim() !== "") {
         map.fitBounds(coordenadasParaEncuadre, { padding: [40, 40] });
     }
 
+    // ── Clientes sin ruta asignada ────────────────────────────────────────────
+    // Se muestran en el mapa y en la lista con el mismo diseño de ficha,
+    // en color gris, con su propia numeración, pero sin afectar rutas.
+    if (ROL_ACTUAL === "admin") {
+        const COLOR_SIN_RUTA = "#95a5a6";
+        const idsEnRutas = new Set();
+        rutasEstructuradas.forEach(ruta => ruta.forEach(p => { if (p.id !== 0) idsEnRutas.add(p.id); }));
+
+        const sinRuta = clientes.filter(c =>
+            !idsEnRutas.has(c.id) &&
+            (diaActivoFiltrado === "todos" || c.dia === diaActivoFiltrado) &&
+            (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(c.id.toString()))
+        );
+
+        if (sinRuta.length > 0) {
+            const tituloSinRuta = document.createElement('div');
+            tituloSinRuta.className = 'route-section-title';
+            tituloSinRuta.style.backgroundColor = COLOR_SIN_RUTA;
+            tituloSinRuta.innerText = `Sin Ruta Asignada (${sinRuta.length} clientes)`;
+            contenedorListasHtml.appendChild(tituloSinRuta);
+
+            const ulSinRuta = document.createElement('ul');
+            ulSinRuta.className = 'route-list';
+
+            sinRuta.forEach((c, idx) => {
+                const numeroPinSR = idx + 1;
+
+                // Pin en mapa
+                if (c.lat !== null && c.lng !== null) {
+                    const marcador = L.marker([c.lat, c.lng], {
+                        icon: crearIconoSvgConNumero(COLOR_SIN_RUTA, numeroPinSR)
+                    }).addTo(map);
+                    marcador.bindPopup(`<b>${c.nombre}</b>${c.pedido ? ` [${c.pedido}]` : ''}<br><span style="color:#95a5a6;font-size:11px;">Sin ruta asignada</span><br>${c.dia ? `📅 ${c.dia}` : ''}`);
+                    marcadoresMapeados[`sinruta_${c.id}`] = marcador;
+                    coordenadasParaEncuadre.push([c.lat, c.lng]);
+                }
+
+                // Ficha en lista
+                let htmlNotasSR = c.notas && c.notas.toString().trim() !== ""
+                    ? `<span class="notas-cliente">📝 ${c.notas}</span>` : "";
+
+                const li = document.createElement('li');
+                li.className = `route-item ${c.lat === null ? 'error-coord' : ''}`;
+                li.setAttribute('data-cliente-id', c.id);
+                li.onclick = function() { enfocarYResaltarCliente(c.id, c.lat, c.lng); };
+
+                li.innerHTML = `
+                    <span class="badge" style="background-color:${COLOR_SIN_RUTA}">${c.lat === null ? '•' : numeroPinSR}</span>
+                    <strong style="font-size:15px;color:#000;">${c.nombre}${c.pedido ? ` [${c.pedido}]` : ''}</strong><br>
+                    ${htmlNotasSR}
+                    <span class="monto-tag">Cobro: $${parseFloat(c.monto).toLocaleString('es-MX', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                    ${c.telefono ? `<div class="info-adicional">📞 <strong>Tel:</strong> <a href="tel:${c.telefono}" onclick="event.stopPropagation();">${c.telefono}</a> | <a href="https://api.whatsapp.com/send?phone=${(() => { let n = c.telefono.toString().replace(/\D/g,''); return n.length===10?'52'+n:n; })()}&text=${encodeURIComponent('¡Hola! 👋 Te saludamos de El Tenate.')}" target="_blank" onclick="event.stopPropagation();" style="color:#25D366;font-weight:bold;">WhatsApp</a></div>` : ''}
+                    ${c.direccion ? `<div class="info-adicional">🏠 <strong>Dir:</strong> ${c.direccion}</div>` : ''}
+                    <div class="contenedor-botones-ficha" onclick="event.stopPropagation();">
+                        ${c.lat !== null ? `<a href="${obtenerEnlaceMaps(c.lat, c.lng)}" target="_blank" class="btn-navegar">GPS</a>` : ''}
+                        <a href="${c.urlOriginal && c.urlOriginal.startsWith('http') ? c.urlOriginal : 'javascript:void(0);'}" target="_blank" onclick="event.stopPropagation();" class="btn-link-cel">🔗 Abrir Link Cel</a>
+                        <button class="btn-manual" onclick="event.stopPropagation(); asignarYEnviarCoordenadaManual(${c.id})">🔧 Ubicar</button>
+                    </div>
+                `;
+                ulSinRuta.appendChild(li);
+            });
+
+            contenedorListasHtml.appendChild(ulSinRuta);
+        }
+    }
+
     actualizarLeyendaRutasMapa();
 }
 
@@ -1520,10 +1587,20 @@ function crearIconoRepartidorEnVivo() {
             rutasEstructuradas.forEach((listaRuta, indiceRuta) => {
                 if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== indiceRuta) return;
 
+                // puntosParaTrazo: filtra por cliente seleccionado (para trazar la línea en el mapa)
                 let puntosValidos = listaRuta.filter(p => 
                     p.id === 0 || (
                         p.lat !== null && p.lng !== null && !p.entregado &&
                         (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(p.id.toString())) &&
+                        (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                    )
+                );
+
+                // puntosParaLlegadas: SIN filtro de cliente — siempre usa la ruta completa del día
+                // para que las horas estimadas reflejen la secuencia real, no la posición desde el origen
+                const puntosParaLlegadas = listaRuta.filter(p =>
+                    p.id === 0 || (
+                        p.lat !== null && p.lng !== null && !p.entregado &&
                         (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
                     )
                 );
@@ -1560,30 +1637,39 @@ function crearIconoRepartidorEnVivo() {
 
                             tiemposEstimadosRutas[indiceRuta] = `Trayecto: ${textoT} | Reparto: ${textoR} | Total Recorrido: ${textoTotal}`;
 
-                            // Calcular hora estimada de llegada a cada cliente usando los legs de OSRM
-                            const [hSal, mSal] = horaSalidaRuta.split(':').map(Number);
-                            let minutosAcumulados = (hSal * 60) + mSal;
-                            const legs = res.routes[0].legs || [];
-                            let _coordPrev1 = null, _horaCoord1 = minutosAcumulados;
-                            let _minsTrayectoTramo = 0; // minutos de trayecto del tramo actual
-                            for (let i = 0; i < puntosValidos.length; i++) {
-                                const punto = puntosValidos[i];
-                                if (i > 0 && legs[i - 1]) {
-                                    _minsTrayectoTramo = (legs[i - 1].duration / 60) * FACTOR_TRAFICO;
-                                    minutosAcumulados += _minsTrayectoTramo;
-                                }
-                                if (punto.id !== 0) {
-                                    const _ck = punto.lat !== null
-                                        ? `${Math.round(punto.lat*1e6)}_${Math.round(punto.lng*1e6)}`
-                                        : `id_${punto.id}`;
-                                    if (_ck !== _coordPrev1) {
-                                        if (_coordPrev1 !== null) minutosAcumulados += MINUTOS_POR_CLIENTE;
-                                        _coordPrev1 = _ck;
-                                        _horaCoord1 = minutosAcumulados;
-                                    }
-                                    llegadasEstimadasPorCliente[punto.id] = formatearHora(_horaCoord1);
-                                    trayectosMinutosPorCliente[punto.id] = Math.round(_minsTrayectoTramo);
-                                }
+                            // Calcular horas de llegada usando la ruta COMPLETA (sin filtro de cliente)
+                            // para que la secuencia sea correcta independientemente del filtro activo
+                            if (puntosParaLlegadas.length >= 2) {
+                                const coordsLL = puntosParaLlegadas.map(p => `${p.lng},${p.lat}`).join(';');
+                                fetch(`https://router.project-osrm.org/route/v1/driving/${coordsLL}?overview=false`)
+                                    .then(r => r.json())
+                                    .then(resLL => {
+                                        if (!resLL.routes || !resLL.routes[0]) return;
+                                        const legsLL = resLL.routes[0].legs || [];
+                                        const _ahoraBase = new Date();
+                                        let minutosAcumulados = (_ahoraBase.getHours() * 60) + _ahoraBase.getMinutes();
+                                        let _coordPrev1 = null, _horaCoord1 = minutosAcumulados;
+                                        let _minsTrayectoTramo = 0;
+                                        for (let i = 0; i < puntosParaLlegadas.length; i++) {
+                                            const punto = puntosParaLlegadas[i];
+                                            if (i > 0 && legsLL[i - 1]) {
+                                                _minsTrayectoTramo = (legsLL[i - 1].duration / 60) * FACTOR_TRAFICO;
+                                                minutosAcumulados += _minsTrayectoTramo;
+                                            }
+                                            if (punto.id !== 0) {
+                                                const _ck = `${Math.round(punto.lat*1e6)}_${Math.round(punto.lng*1e6)}`;
+                                                if (_ck !== _coordPrev1) {
+                                                    if (_coordPrev1 !== null) minutosAcumulados += MINUTOS_POR_CLIENTE;
+                                                    _coordPrev1 = _ck;
+                                                    _horaCoord1 = minutosAcumulados;
+                                                }
+                                                llegadasEstimadasPorCliente[punto.id] = formatearHora(_horaCoord1);
+                                                trayectosMinutosPorCliente[punto.id] = Math.round(_minsTrayectoTramo);
+                                            }
+                                        }
+                                        refrescarMapaYListasVisuales();
+                                    })
+                                    .catch(() => {});
                             }
 
                             let titulos = document.getElementsByClassName('route-section-title');
@@ -2098,16 +2184,17 @@ function crearIconoRepartidorEnVivo() {
                     noVisitados.splice(indiceMasCercano, 1);
                 }
             }
-            // Agregamos forzosamente "El Tenate" (deposito) al final de la secuencia para cerrar el circuito completo
             subRutaOptima.push(deposito);
 
-            // ── Mejora local 2-opt ──────────────────────────────────────────────────
-            // El vecino más cercano es voraz: puede dejar un punto "atrapado" lejos del
-            // resto, forzando un viaje de ida y vuelta caro al cerrar el circuito hacia
-            // el depósito. 2-opt revisa pares de tramos y, si invertir el segmento entre
-            // ellos reduce la distancia TOTAL del circuito (incluyendo el regreso al
-            // depósito), aplica el cambio. Se repite hasta que ya no hay mejoras posibles.
+            // ── Fase 1: 2-opt — elimina cruces de tramos ──────────────────────────
             subRutaOptima = aplicarMejora2Opt(subRutaOptima);
+
+            // ── Fase 2: Or-opt — reubica grupos de 1 y 2 puntos ──────────────────
+            // Resuelve el patrón que 2-opt no detecta: puntos "atrapados" al final
+            // que generan un desvío de ida y vuelta antes de cerrar el circuito.
+            // Prueba mover cada punto (o par de puntos consecutivos) a todas las
+            // posiciones posibles y aplica si reduce la distancia total.
+            subRutaOptima = aplicarOrOpt(subRutaOptima);
 
             return subRutaOptima;
         }
@@ -2118,35 +2205,84 @@ function crearIconoRepartidorEnVivo() {
             return Math.sqrt(dLat * dLat + dLng * dLng);
         }
 
+        function distanciaTotal(ruta) {
+            let d = 0;
+            for (let i = 0; i < ruta.length - 1; i++) d += distanciaEntre(ruta[i], ruta[i+1]);
+            return d;
+        }
+
         function aplicarMejora2Opt(ruta) {
-            // ruta[0] = punto de arranque (depósito o GPS), ruta[ultimo] = depósito de cierre.
-            // Solo reordenamos el tramo intermedio (índices 1 .. n-2); los extremos quedan fijos.
             const n = ruta.length;
-            if (n < 4) return ruta; // muy pocos puntos para que 2-opt tenga sentido
+            if (n < 4) return ruta;
 
             let mejorado = true;
             let intentos = 0;
-            const MAX_INTENTOS = 200; // límite de seguridad para evitar bucles largos en rutas grandes
+            const MAX_INTENTOS = 200;
 
             while (mejorado && intentos < MAX_INTENTOS) {
                 mejorado = false;
                 intentos++;
-
                 for (let i = 1; i < n - 2; i++) {
                     for (let j = i + 1; j < n - 1; j++) {
-                        const a = ruta[i - 1], b = ruta[i];
-                        const c = ruta[j],     d = ruta[j + 1];
-
-                        const distActual = distanciaEntre(a, b) + distanciaEntre(c, d);
-                        const distNueva  = distanciaEntre(a, c) + distanciaEntre(b, d);
-
-                        // Si invertir el segmento [i..j] acorta el circuito, lo aplicamos
-                        if (distNueva < distActual - 1e-9) {
-                            const segmentoInvertido = ruta.slice(i, j + 1).reverse();
-                            ruta = [...ruta.slice(0, i), ...segmentoInvertido, ...ruta.slice(j + 1)];
+                        const a = ruta[i-1], b = ruta[i], c = ruta[j], d = ruta[j+1];
+                        if (distanciaEntre(a,c) + distanciaEntre(b,d) < distanciaEntre(a,b) + distanciaEntre(c,d) - 1e-9) {
+                            ruta = [...ruta.slice(0,i), ...ruta.slice(i,j+1).reverse(), ...ruta.slice(j+1)];
                             mejorado = true;
                         }
                     }
+                }
+            }
+            return ruta;
+        }
+
+        function aplicarOrOpt(ruta) {
+            // ruta[0] = origen, ruta[last] = depósito cierre — ambos fijos.
+            // Prueba mover segmentos de tamaño 1 y 2 a cada posición posible.
+            const MAX_ITER = 150;
+            let iter = 0;
+            let mejorado = true;
+
+            while (mejorado && iter < MAX_ITER) {
+                mejorado = false;
+                iter++;
+                const n = ruta.length;
+
+                for (let segLen = 1; segLen <= 2; segLen++) {
+                    for (let i = 1; i <= n - 2 - segLen; i++) {
+                        // Segmento a mover: ruta[i .. i+segLen-1]
+                        const seg = ruta.slice(i, i + segLen);
+                        const antes  = ruta[i - 1];
+                        const despues = ruta[i + segLen];
+
+                        // Costo actual de los tramos alrededor del segmento
+                        const costoRemover = distanciaEntre(antes, seg[0])
+                                           + distanciaEntre(seg[segLen-1], despues)
+                                           - distanciaEntre(antes, despues);
+
+                        // Probar insertar el segmento en cada otra posición
+                        for (let j = 1; j <= n - 2; j++) {
+                            if (j >= i - 1 && j <= i + segLen) continue; // posición actual, saltar
+
+                            const p = ruta[j], q = ruta[j + 1];
+                            // Costo de insertar entre p y q
+                            const costoInsertar = distanciaEntre(p, seg[0])
+                                                + distanciaEntre(seg[segLen-1], q)
+                                                - distanciaEntre(p, q);
+
+                            if (costoInsertar < costoRemover - 1e-9) {
+                                // Aplicar el movimiento
+                                let nueva = ruta.filter((_, idx) => idx < i || idx >= i + segLen);
+                                // Calcular nueva posición de inserción después de eliminar
+                                let insertPos = j < i ? j + 1 : j + 1 - segLen;
+                                nueva = [...nueva.slice(0, insertPos), ...seg, ...nueva.slice(insertPos)];
+                                ruta = nueva;
+                                mejorado = true;
+                                break;
+                            }
+                        }
+                        if (mejorado) break;
+                    }
+                    if (mejorado) break;
                 }
             }
             return ruta;
