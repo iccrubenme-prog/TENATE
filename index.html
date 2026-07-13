@@ -373,8 +373,12 @@
             <button class="btn-role-choice btn-admin-choice" onclick="seleccionarRolSistema('admin')">🔑 Entrar como Administrador</button>
             <button class="btn-role-choice btn-driver-choice" onclick="mostrarSeccionRutaRepartidor()">🚗 Entrar como Repartidor</button>
             <div id="box-seleccion-ruta-driver" class="driver-select-box">
+                <label style="font-size:12px; font-weight:bold; color:#555; display:block; margin-bottom:5px;">Selecciona el Día:</label>
+                <select id="select-dia-repartidor-gate" onchange="actualizarRutasPorDiaGate(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
+                    <option value="">-- Elige tu día --</option>
+                </select>
                 <label style="font-size:12px; font-weight:bold; color:#555; display:block; margin-bottom:5px;">Selecciona tu Ruta Asignada:</label>
-                <select id="select-ruta-repartidor-gate">
+                <select id="select-ruta-repartidor-gate" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
                     </select>
                 <button class="btn-role-choice btn-driver-choice" style="margin-bottom:0;" onclick="seleccionarRolSistema('repartidor')">Ingresar a mi Ruta</button>
             </div>
@@ -659,14 +663,14 @@
         }
 
         function importarDatosDesdeSheets() {
-            if(URL_GOOGLE_SCRIPT.trim() === "") return;
+            if(URL_GOOGLE_SCRIPT.trim() === "") return Promise.resolve();
             limpiarTodoElMapa();
             clientes = [];
             tiemposEstimadosRutas = {};
             llegadasEstimadasPorCliente = {};
             trayectosMinutosPorCliente = {};
 
-            fetch(URL_GOOGLE_SCRIPT)
+            return fetch(URL_GOOGLE_SCRIPT)
                 .then(res => res.json())
                 .then(datosNube => {
                     if(datosNube.error) { alert("Error: " + datosNube.error); return; }
@@ -856,40 +860,89 @@
         function construirMapaNombresPorRuta() {
             const nombresPorRuta = {};
             clientes.forEach(c => {
-                if (c.rutaAsignadaBase && c.quien) {
-                    const match = c.rutaAsignadaBase.match(/\d+/);
-                    if (match) {
-                        const idx = parseInt(match[0]) - 1;
-                        if (!(idx in nombresPorRuta)) nombresPorRuta[idx] = c.quien;
-                    }
+                if (!c.rutaAsignadaBase || !c.quien || c.quien.trim() === "" || c.quien.trim() === "Sin Asignar") return;
+                const match = c.rutaAsignadaBase.match(/\d+/);
+                if (!match) return;
+                const idx = parseInt(match[0]) - 1;
+                // Solo actualizar si aún no hay nombre, o si este cliente es del día activo
+                // (para que el nombre del día filtrado tenga prioridad sobre otros días)
+                if (!(idx in nombresPorRuta)) {
+                    nombresPorRuta[idx] = c.quien.trim();
+                } else if (diaActivoFiltrado !== "todos" && c.dia === diaActivoFiltrado) {
+                    nombresPorRuta[idx] = c.quien.trim();
                 }
             });
             return nombresPorRuta;
         }
 
         function actualizarSelectoresDeRutaDinamicos() {
-    const cantRutas = rutasEstructuradas.length;
+            const cantRutas = rutasEstructuradas.length;
+            const nombresPorRuta = construirMapaNombresPorRuta();
 
-    // Construir mapa: índice de ruta (0-based) → nombre del repartidor (quien)
-    const nombresPorRuta = construirMapaNombresPorRuta();
+            // ── Selector de rutas del admin (filtro-repartidor) ───────────────────
+            const selectFiltro = document.getElementById("filtro-repartidor");
+            const valorPrevioFiltro = selectFiltro.value || "todas";
+            selectFiltro.innerHTML = '<option value="todas">🌍 Ver Todas las Rutas (Administrador)</option>';
+            for (let r = 0; r < cantRutas; r++) {
+                const tieneClientes = rutasEstructuradas[r].some(p =>
+                    p.id !== 0 && (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                );
+                if (!tieneClientes) continue;
+                const etiqueta = nombresPorRuta[r] ? `Ruta ${nombresPorRuta[r]}` : `Ruta ${r + 1}`;
+                selectFiltro.innerHTML += `<option value="${r}">🚗 ${etiqueta}</option>`;
+            }
+            selectFiltro.value = valorPrevioFiltro;
+            if (!selectFiltro.value || selectFiltro.value === "") selectFiltro.value = "todas";
 
-    const selectFiltro = document.getElementById("filtro-repartidor");
-    const valorPrevioFiltro = selectFiltro.value || "todas";
-    selectFiltro.innerHTML = '<option value="todas">🌍 Ver Todas las Rutas (Administrador)</option>';
-    for (let r = 0; r < cantRutas; r++) {
-        const etiqueta = nombresPorRuta[r] ? `Ruta ${nombresPorRuta[r]}` : `Ruta ${r + 1}`;
-        selectFiltro.innerHTML += `<option value="${r}">🚗 ${etiqueta}</option>`;
-    }
-    selectFiltro.value = valorPrevioFiltro;
-    if(!selectFiltro.value || parseInt(selectFiltro.value) >= cantRutas) selectFiltro.value = "todas";
+            // ── Selector de días del gate (repartidor) ────────────────────────────
+            const selectDiaGate = document.getElementById("select-dia-repartidor-gate");
+            if (selectDiaGate) {
+                const diaActualGate = selectDiaGate.value || "";
+                const diasUnicos = [...new Set(clientes.map(c => c.dia).filter(d => d && d.trim() !== ""))].sort();
+                selectDiaGate.innerHTML = '<option value="">-- Elige tu día --</option>';
+                diasUnicos.forEach(d => {
+                    selectDiaGate.innerHTML += `<option value="${d}"${d === diaActualGate ? " selected" : ""}>${d}</option>`;
+                });
+                // Poblar rutas según el día seleccionado en el gate
+                actualizarRutasPorDiaGate(diaActualGate);
+            }
+        }
 
-    const selectGate = document.getElementById("select-ruta-repartidor-gate");
-    selectGate.innerHTML = '';
-    for (let r = 0; r < cantRutas; r++) {
-        const etiqueta = nombresPorRuta[r] ? `Ruta ${nombresPorRuta[r]}` : `Ruta ${r + 1}`;
-        selectGate.innerHTML += `<option value="${r}">${etiqueta}</option>`;
-    }
-}
+        function actualizarRutasPorDiaGate(dia) {
+            const selectGate = document.getElementById("select-ruta-repartidor-gate");
+            if (!selectGate) return;
+            selectGate.innerHTML = '';
+
+            if (!dia) {
+                selectGate.innerHTML = '<option value="">-- Primero elige el día --</option>';
+                return;
+            }
+
+            // Construir mapa de nombres por ruta filtrado por el día seleccionado
+            const nombresPorRutaDia = {};
+            clientes.forEach(c => {
+                if (!c.rutaAsignadaBase || !c.dia || c.dia !== dia) return;
+                const match = c.rutaAsignadaBase.match(/\d+/);
+                if (!match) return;
+                const idx = parseInt(match[0]) - 1;
+                if (!(idx in nombresPorRutaDia) && c.quien && c.quien.trim() !== "" && c.quien.trim() !== "Sin Asignar") {
+                    nombresPorRutaDia[idx] = c.quien.trim();
+                }
+            });
+
+            // Mostrar solo rutas que tengan clientes del día elegido
+            const rutasDelDia = Object.keys(nombresPorRutaDia).map(Number).sort((a, b) => a - b);
+
+            if (rutasDelDia.length === 0) {
+                selectGate.innerHTML = '<option value="">Sin rutas para este día</option>';
+                return;
+            }
+
+            rutasDelDia.forEach(r => {
+                const etiqueta = nombresPorRutaDia[r] ? `Ruta ${nombresPorRutaDia[r]}` : `Ruta ${r + 1}`;
+                selectGate.innerHTML += `<option value="${r}">${etiqueta}</option>`;
+            });
+        }
 
         function poblarFiltroDia() {
             const select = document.getElementById("filtro-dia");
@@ -912,6 +965,8 @@
         function aplicarFiltroDia(dia) {
             diaActivoFiltrado = dia;
             localStorage.setItem("tenate_filtro_dia", dia);
+            actualizarSelectoresDeRutaDinamicos();
+            construirListaCheckboxClientes();
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
         }
@@ -2326,6 +2381,16 @@ function crearIconoRepartidorEnVivo() {
                 selectFiltro.value = "todas";
             } else {
                 const rutaSeleccionada = document.getElementById("select-ruta-repartidor-gate").value;
+                const diaSeleccionadoGate = document.getElementById("select-dia-repartidor-gate").value;
+
+                // Aplicar el día elegido en el gate como filtro activo de la sesión
+                if (diaSeleccionadoGate) {
+                    diaActivoFiltrado = diaSeleccionadoGate;
+                    localStorage.setItem("tenate_filtro_dia", diaSeleccionadoGate);
+                    const selectDiaAdmin = document.getElementById("filtro-dia");
+                    if (selectDiaAdmin) selectDiaAdmin.value = diaSeleccionadoGate;
+                }
+
                 subtitulo.innerText = `Vista Repartidor - Ruta ${parseInt(rutaSeleccionada) + 1}`;
                 btnSync.style.display = "none";
                 btnDepot.style.display = "none";
@@ -2341,6 +2406,18 @@ function crearIconoRepartidorEnVivo() {
             }
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
+
+            // Guardar estado de sesión para restaurar si el repartidor cambia de app
+            sessionStorage.setItem("tenate_rol", ROL_ACTUAL);
+            if (ROL_ACTUAL === "repartidor") {
+                const rutaSelec = document.getElementById("select-ruta-repartidor-gate").value;
+                const diaSelec  = document.getElementById("select-dia-repartidor-gate").value;
+                sessionStorage.setItem("tenate_ruta_seleccionada", rutaSelec);
+                sessionStorage.setItem("tenate_dia_gate", diaSelec);
+            } else {
+                sessionStorage.removeItem("tenate_ruta_seleccionada");
+                sessionStorage.removeItem("tenate_dia_gate");
+            }
 
             iniciarSincroniaLigeraAutomatica();
         }
@@ -2377,7 +2454,7 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
 	// Actualizar el título del modal según el filtro de día activo
             	const tituloModal = document.getElementById("resumen-titulo");
 
-            // Construir datos de cada ruta
+            // Construir datos de cada ruta, excluyendo las que no tienen clientes del día activo
             const filas = rutasEstructuradas.map((listaRuta, indice) => {
                 const clientes = listaRuta.filter(p =>
                     p.id !== 0 &&
@@ -2390,15 +2467,12 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
                 const nombre = obtenerNombreRuta(indice);
                 const color = obtenerColorRuta(indice);
 
-		const matchTotalHM = tiempoTexto.match(/Total Recorrido:\s*(\d+h\s*\d+m)/);
-		const matchTotalM  = tiempoTexto.match(/Total Recorrido:\s*(\d+\s*mins)/);
-		const tiempoTotal  = matchTotalHM ? matchTotalHM[1] : (matchTotalM ? matchTotalM[1] : "—");
+                const matchTotalHM = tiempoTexto.match(/Total Recorrido:\s*(\d+h\s*\d+m)/);
+                const matchTotalM  = tiempoTexto.match(/Total Recorrido:\s*(\d+\s*mins)/);
+                const tiempoTotal  = matchTotalHM ? matchTotalHM[1] : (matchTotalM ? matchTotalM[1] : "—");
 
                 return { indice, nombre, totalClientes, totalMonto, tiempoTexto, tiempoTotal, minutos, color };
-		
-
-
-            });
+            }).filter(f => f.totalClientes > 0); // solo rutas con clientes del día activo
 
             // Ordenar de mayor a menor tiempo total de recorrido
             filas.sort((a, b) => b.minutos - a.minutos);
@@ -2627,10 +2701,36 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
             clientesSeleccionadosFiltro = [];
             document.getElementById("buscador-cliente-texto").value = "";
             if (intervaloSincroniaLigera) { clearInterval(intervaloSincroniaLigera); intervaloSincroniaLigera = null; }
+            // Limpiar estado guardado al salir voluntariamente
+            sessionStorage.removeItem("tenate_rol");
+            sessionStorage.removeItem("tenate_ruta_seleccionada");
         }
 
         document.getElementById("hora-salida-ruta").value = horaSalidaRuta;
-        importarDatosDesdeSheets();
+        importarDatosDesdeSheets().then(() => {
+            // Restaurar sesión si el usuario regresó desde otra app sin cerrar sesión
+            const rolGuardado = sessionStorage.getItem("tenate_rol");
+            if (rolGuardado) {
+                const rutaGuardada = sessionStorage.getItem("tenate_ruta_seleccionada");
+                if (rolGuardado === "repartidor" && rutaGuardada !== null) {
+                    const diaGuardadoGate = sessionStorage.getItem("tenate_dia_gate");
+                    const selectDiaGate = document.getElementById("select-dia-repartidor-gate");
+                    const selectGate = document.getElementById("select-ruta-repartidor-gate");
+                    if (diaGuardadoGate && selectDiaGate) {
+                        selectDiaGate.value = diaGuardadoGate;
+                        actualizarRutasPorDiaGate(diaGuardadoGate);
+                    }
+                    if (selectGate) {
+                        selectGate.value = rutaGuardada;
+                        if (selectGate.value === rutaGuardada) {
+                            seleccionarRolSistema("repartidor");
+                        }
+                    }
+                } else if (rolGuardado === "admin") {
+                    seleccionarRolSistema("admin");
+                }
+            }
+        });
     </script>
     <!-- Reporte Cierre de Día -->
     <div id="reporte-cierre-dia">
