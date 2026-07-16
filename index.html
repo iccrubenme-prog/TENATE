@@ -693,9 +693,18 @@
                             quien: item.quien || "",
                             dia: item.dia || "",
                             pedido: item.pedido || "",
-                            cte: (item.cte !== undefined && item.cte !== null && item.cte.toString().trim() !== "") ? parseInt(item.cte) : null
+                            cte: (item.cte !== undefined && item.cte !== null && item.cte.toString().trim() !== "") ? parseInt(item.cte) : null,
+                            etaGuardada: item.eta || "" // Hora de llegada calculada por el repartidor, para que el admin la lea tal cual
                         });
                     });
+
+                    // El admin muestra desde el primer momento la hora que el repartidor ya
+                    // haya calculado y guardado, sin esperar a un cambio detectado en el poll.
+                    if (ROL_ACTUAL === "admin") {
+                        clientes.forEach(c => {
+                            if (c.etaGuardada) llegadasEstimadasPorCliente[c.id] = c.etaGuardada;
+                        });
+                    }
 
                     let tieneRutasAsignadas = clientes.some(c => c.rutaAsignadaBase && c.rutaAsignadaBase.toLowerCase().includes("ruta"));
                     
@@ -779,17 +788,32 @@
                             cl.cte              = cteNube;
                             huboCambiosOrden    = true;
                         }
+
+                        // ── Hora de llegada calculada por el repartidor ────────────
+                        // El admin nunca la calcula por su cuenta: solo refleja el valor
+                        // que el repartidor ya guardó, para que ambas vistas coincidan.
+                        const etaNube = (item.eta || "").toString().trim();
+                        if (ROL_ACTUAL === "admin" && cl.etaGuardada !== etaNube) {
+                            cl.etaGuardada = etaNube;
+                            if (etaNube) llegadasEstimadasPorCliente[cl.id] = etaNube;
+                            huboCambiosEstatus = true; // reutiliza el refresco de vista ya existente
+                        }
                     });
 
                     if (huboCambiosOrden) {
                         // Reconstruir rutasEstructuradas respetando ruta + cte de la nube
                         const maxRutaNum = clientes.reduce((max, c) => {
+                            if (diaActivoFiltrado !== "todos" && c.dia !== diaActivoFiltrado) return max;
                             const m = (c.rutaAsignadaBase || "").match(/\d+/);
                             return m ? Math.max(max, parseInt(m[0])) : max;
                         }, 1);
 
                         rutasEstructuradas = Array.from({ length: maxRutaNum }, () => [deposito]);
                         clientes.forEach(c => {
+                            // Solo incluir clientes del día activo: el nombre de ruta ("Ruta 1", "Ruta 2"...)
+                            // se reutiliza entre días distintos, así que sin este filtro se mezclan
+                            // clientes de días diferentes en la misma ruta, rompiendo la secuencia de #Cte.
+                            if (diaActivoFiltrado !== "todos" && c.dia !== diaActivoFiltrado) return;
                             const m = (c.rutaAsignadaBase || "").match(/\d+/);
                             if (m) {
                                 const idx = parseInt(m[0]) - 1;
@@ -1053,8 +1077,10 @@
             const latRef = cl.lat !== null ? Math.round(parseFloat(cl.lat) * FACTOR) / FACTOR : null;
             const lngRef = cl.lng !== null ? Math.round(parseFloat(cl.lng) * FACTOR) / FACTOR : null;
 
-            // Todos los clientes con la misma coordenada van a la misma ruta
+            // Todos los clientes con la misma coordenada Y el mismo día van a la misma ruta
+            // (coordenada sola no basta: dos clientes de días distintos pueden compartir dirección)
             const clientesMismaCoord = clientes.filter(c => {
+                if (c.dia !== cl.dia) return c.id === id;
                 if (latRef === null || c.lat === null || c.lng === null) return c.id === id;
                 const latC = Math.round(parseFloat(c.lat) * FACTOR) / FACTOR;
                 const lngC = Math.round(parseFloat(c.lng) * FACTOR) / FACTOR;
@@ -1693,8 +1719,20 @@ function crearIconoRepartidorEnVivo() {
                             tiemposEstimadosRutas[indiceRuta] = `Trayecto: ${textoT} | Reparto: ${textoR} | Total Recorrido: ${textoTotal}`;
 
                             // Calcular horas de llegada usando la ruta COMPLETA (sin filtro de cliente)
-                            // para que la secuencia sea correcta independientemente del filtro activo
-                            if (puntosParaLlegadas.length >= 2) {
+                            // para que la secuencia sea correcta independientemente del filtro activo.
+                            //
+                            // El REPARTIDOR siempre calcula (es quien realmente está en movimiento) y
+                            // guarda el resultado en Sheets. El ADMIN solo calcula por su cuenta como
+                            // RESPALDO, mientras el repartidor nunca ha abierto su vista para esa ruta
+                            // (es decir, mientras no exista ningún ETA guardado todavía). En cuanto el
+                            // repartidor calcula y guarda al menos un ETA, el admin deja de calcular y
+                            // solo refleja ese valor (ver sincronizacionLigeraEstatus e
+                            // importarDatosDesdeSheets), para que ambas vistas siempre coincidan.
+                            const _yaHayEtaDelRepartidor = puntosParaLlegadas.some(p => p.id !== 0 && p.etaGuardada);
+                            const _debeCalcularAqui = ROL_ACTUAL === "repartidor" ||
+                                                       (ROL_ACTUAL === "admin" && !_yaHayEtaDelRepartidor);
+
+                            if (_debeCalcularAqui && puntosParaLlegadas.length >= 2) {
                                 const coordsLL = puntosParaLlegadas.map(p => `${p.lng},${p.lat}`).join(';');
                                 fetch(`https://router.project-osrm.org/route/v1/driving/${coordsLL}?overview=false`)
                                     .then(r => r.json())
@@ -1705,6 +1743,7 @@ function crearIconoRepartidorEnVivo() {
                                         let minutosAcumulados = (_ahoraBase.getHours() * 60) + _ahoraBase.getMinutes();
                                         let _coordPrev1 = null, _horaCoord1 = minutosAcumulados;
                                         let _minsTrayectoTramo = 0;
+                                        let _etasParaGuardar = [];
                                         for (let i = 0; i < puntosParaLlegadas.length; i++) {
                                             const punto = puntosParaLlegadas[i];
                                             if (i > 0 && legsLL[i - 1]) {
@@ -1718,11 +1757,24 @@ function crearIconoRepartidorEnVivo() {
                                                     _coordPrev1 = _ck;
                                                     _horaCoord1 = minutosAcumulados;
                                                 }
-                                                llegadasEstimadasPorCliente[punto.id] = formatearHora(_horaCoord1);
+                                                const _horaTexto = formatearHora(_horaCoord1);
+                                                llegadasEstimadasPorCliente[punto.id] = _horaTexto;
                                                 trayectosMinutosPorCliente[punto.id] = Math.round(_minsTrayectoTramo);
+                                                _etasParaGuardar.push({ id: punto.id, eta: _horaTexto });
                                             }
                                         }
                                         refrescarMapaYListasVisuales();
+
+                                        // Solo el repartidor persiste en Sheets — el cálculo de respaldo del
+                                        // admin es solo para mostrar algo mientras tanto, nunca se guarda,
+                                        // para no pisar el cálculo real del repartidor cuando este empiece.
+                                        if (ROL_ACTUAL === "repartidor" && _etasParaGuardar.length > 0) {
+                                            fetch(URL_GOOGLE_SCRIPT, {
+                                                method: "POST", mode: "no-cors",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ accion: "guardar_etas_masivo", etas: _etasParaGuardar })
+                                            }).catch(() => {});
+                                        }
                                     })
                                     .catch(() => {});
                             }
@@ -2241,15 +2293,23 @@ function crearIconoRepartidorEnVivo() {
             }
             subRutaOptima.push(deposito);
 
-            // ── Fase 1: 2-opt — elimina cruces de tramos ──────────────────────────
-            subRutaOptima = aplicarMejora2Opt(subRutaOptima);
-
-            // ── Fase 2: Or-opt — reubica grupos de 1 y 2 puntos ──────────────────
-            // Resuelve el patrón que 2-opt no detecta: puntos "atrapados" al final
-            // que generan un desvío de ida y vuelta antes de cerrar el circuito.
-            // Prueba mover cada punto (o par de puntos consecutivos) a todas las
-            // posiciones posibles y aplica si reduce la distancia total.
-            subRutaOptima = aplicarOrOpt(subRutaOptima);
+            // ── Fases 2-opt / Or-opt alternadas ───────────────────────────────────
+            // 2-opt elimina cruces de tramos. Or-opt reubica grupos de 1-2 puntos
+            // (resuelve el patrón de puntos "atrapados" al final que generan un
+            // desvío de ida y vuelta antes de cerrar el circuito). Aplicar cada
+            // uno una sola vez no basta: los movimientos de Or-opt casi siempre
+            // abren nuevos cruces que solo 2-opt puede destrabar, y viceversa.
+            // Por eso se alternan en ciclo hasta que ninguno encuentre mejora,
+            // en vez de correr cada uno una sola vez (causa de la numeración
+            // "saltada" en rutas grandes).
+            const MAX_CICLOS_ALTERNANCIA = 10;
+            for (let ciclo = 0; ciclo < MAX_CICLOS_ALTERNANCIA; ciclo++) {
+                const distanciaAntes = distanciaTotal(subRutaOptima);
+                subRutaOptima = aplicarMejora2Opt(subRutaOptima);
+                subRutaOptima = aplicarOrOpt(subRutaOptima);
+                const distanciaDespues = distanciaTotal(subRutaOptima);
+                if (distanciaAntes - distanciaDespues < 1e-9) break; // ya no hay mejora, se estabilizó
+            }
 
             return subRutaOptima;
         }
