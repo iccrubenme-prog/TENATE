@@ -719,44 +719,7 @@
                         });
                     });
 
-                    let tieneRutasAsignadas = clientes.some(c => c.rutaAsignadaBase && c.rutaAsignadaBase.toLowerCase().includes("ruta"));
-                    
-                    if (tieneRutasAsignadas) {
-                        rutasOptimizadasActivas = true;
-                        let maxRutaNum = 1;
-                        clientes.forEach(c => {
-                            if (diaActivoFiltrado !== "todos" && c.dia !== diaActivoFiltrado) return;
-                            let match = c.rutaAsignadaBase.match(/\d+/);
-                            if(match) { let n = parseInt(match[0]); if(n > maxRutaNum) maxRutaNum = n; }
-                        });
-
-                        // Inicializar estructuras incluyendo Depósito al inicio y al final como cierre
-                        rutasEstructuradas = Array.from({ length: maxRutaNum }, () => [deposito]);
-                        clientes.forEach(c => {
-                            // Solo incluir clientes del día activo: el nombre de ruta ("Ruta 1", "Ruta 2"...)
-                            // se reutiliza entre días distintos, así que sin este filtro se mezclan
-                            // clientes de días diferentes en la misma ruta, rompiendo la secuencia de #Cte.
-                            if (diaActivoFiltrado !== "todos" && c.dia !== diaActivoFiltrado) return;
-                            let match = c.rutaAsignadaBase.match(/\d+/);
-                            if (match) {
-                                let idx = parseInt(match[0]) - 1;
-                                if (idx >= 0 && idx < maxRutaNum) rutasEstructuradas[idx].push(c);
-                            }
-                            // Si no tiene ruta asignada, NO se agrega a ninguna ruta
-                        });
-                        // Ordenar cada ruta según el orden fijo guardado en la columna #Cte.
-                        // Los clientes sin valor de #Cte (legado) se mantienen al final en el
-                        // orden en que llegaron, para no perder información existente.
-                        rutasEstructuradas = rutasEstructuradas.map(ruta => {
-                            const clientesRuta = ruta.filter(p => p.id !== 0);
-                            const conCte = clientesRuta.filter(p => p.cte !== null).sort((a, b) => a.cte - b.cte);
-                            const sinCte = clientesRuta.filter(p => p.cte === null);
-                            return [deposito, ...conCte, ...sinCte, deposito];
-                        });
-                    } else {
-                        rutasOptimizadasActivas = false;
-                        rutasEstructuradas = [];
-                    }
+                    reconstruirRutasEstructuradasDesdeClientes();
 
                     actualizarSelectoresDeRutaDinamicos();
                     poblarFiltroDia();
@@ -810,33 +773,7 @@
 
                     if (huboCambiosOrden) {
                         // Reconstruir rutasEstructuradas respetando ruta + cte de la nube
-                        const maxRutaNum = clientes.reduce((max, c) => {
-                            if (diaActivoFiltrado !== "todos" && c.dia !== diaActivoFiltrado) return max;
-                            const m = (c.rutaAsignadaBase || "").match(/\d+/);
-                            return m ? Math.max(max, parseInt(m[0])) : max;
-                        }, 1);
-
-                        rutasEstructuradas = Array.from({ length: maxRutaNum }, () => [deposito]);
-                        clientes.forEach(c => {
-                            // Solo incluir clientes del día activo: el nombre de ruta ("Ruta 1", "Ruta 2"...)
-                            // se reutiliza entre días distintos, así que sin este filtro se mezclan
-                            // clientes de días diferentes en la misma ruta, rompiendo la secuencia de #Cte.
-                            if (diaActivoFiltrado !== "todos" && c.dia !== diaActivoFiltrado) return;
-                            const m = (c.rutaAsignadaBase || "").match(/\d+/);
-                            if (m) {
-                                const idx = parseInt(m[0]) - 1;
-                                if (idx >= 0 && idx < maxRutaNum) rutasEstructuradas[idx].push(c);
-                            }
-                            // Sin ruta asignada: no se agrega a ninguna ruta
-                        });
-
-                        // Ordenar cada ruta por cte (orden fijo de visita)
-                        rutasEstructuradas = rutasEstructuradas.map(ruta => {
-                            const cli   = ruta.filter(p => p.id !== 0);
-                            const conCte = cli.filter(p => p.cte !== null && p.cte !== undefined).sort((a, b) => a.cte - b.cte);
-                            const sinCte = cli.filter(p => p.cte === null || p.cte === undefined);
-                            return [deposito, ...conCte, ...sinCte, deposito];
-                        });
+                        reconstruirRutasEstructuradasDesdeClientes();
 
                         actualizarSelectoresDeRutaDinamicos();
                         refrescarMapaYListasVisuales();
@@ -994,9 +931,56 @@
 
         let diaActivoFiltrado = localStorage.getItem("tenate_filtro_dia") || "todos";
 
+        // Reconstruye rutasEstructuradas desde clientes[] filtrando por el día activo.
+        // Se usa tanto en la carga inicial como cada vez que cambia el filtro de día,
+        // para que la estructura en memoria siempre corresponda al día que se está viendo
+        // (si no se reconstruye al cambiar de día, los clientes del nuevo día simplemente
+        // no están en rutasEstructuradas y se ven como si no tuvieran ruta asignada).
+        function reconstruirRutasEstructuradasDesdeClientes() {
+            let tieneRutasAsignadas = clientes.some(c => c.rutaAsignadaBase && c.rutaAsignadaBase.toLowerCase().includes("ruta"));
+
+            if (tieneRutasAsignadas) {
+                rutasOptimizadasActivas = true;
+                let maxRutaNum = 1;
+                clientes.forEach(c => {
+                    if (diaActivoFiltrado !== "todos" && c.dia !== diaActivoFiltrado) return;
+                    let match = c.rutaAsignadaBase.match(/\d+/);
+                    if (match) { let n = parseInt(match[0]); if (n > maxRutaNum) maxRutaNum = n; }
+                });
+
+                // Inicializar estructuras incluyendo Depósito al inicio y al final como cierre
+                rutasEstructuradas = Array.from({ length: maxRutaNum }, () => [deposito]);
+                clientes.forEach(c => {
+                    // Solo incluir clientes del día activo: el nombre de ruta ("Ruta 1", "Ruta 2"...)
+                    // se reutiliza entre días distintos, así que sin este filtro se mezclan
+                    // clientes de días diferentes en la misma ruta, rompiendo la secuencia de #Cte.
+                    if (diaActivoFiltrado !== "todos" && c.dia !== diaActivoFiltrado) return;
+                    let match = c.rutaAsignadaBase.match(/\d+/);
+                    if (match) {
+                        let idx = parseInt(match[0]) - 1;
+                        if (idx >= 0 && idx < maxRutaNum) rutasEstructuradas[idx].push(c);
+                    }
+                    // Si no tiene ruta asignada, NO se agrega a ninguna ruta
+                });
+                // Ordenar cada ruta según el orden fijo guardado en la columna #Cte.
+                // Los clientes sin valor de #Cte (legado) se mantienen al final en el
+                // orden en que llegaron, para no perder información existente.
+                rutasEstructuradas = rutasEstructuradas.map(ruta => {
+                    const clientesRuta = ruta.filter(p => p.id !== 0);
+                    const conCte = clientesRuta.filter(p => p.cte !== null).sort((a, b) => a.cte - b.cte);
+                    const sinCte = clientesRuta.filter(p => p.cte === null);
+                    return [deposito, ...conCte, ...sinCte, deposito];
+                });
+            } else {
+                rutasOptimizadasActivas = false;
+                rutasEstructuradas = [];
+            }
+        }
+
         function aplicarFiltroDia(dia) {
             diaActivoFiltrado = dia;
             localStorage.setItem("tenate_filtro_dia", dia);
+            reconstruirRutasEstructuradasDesdeClientes();
             actualizarSelectoresDeRutaDinamicos();
             construirListaCheckboxClientes();
             refrescarMapaYListasVisuales();
@@ -1662,6 +1646,7 @@ function crearIconoRepartidorEnVivo() {
         }
 
         function limpiarTodoElMapa() {
+            _tokenTrazadoRutas++; // invalida cualquier fetch de rutas que siga en curso
             for (let id in marcadoresMapeados) map.removeLayer(marcadoresMapeados[id]);
             marcadoresMapeados = {};
             lineasRutasCapas.forEach(l => map.removeLayer(l));
@@ -1669,9 +1654,14 @@ function crearIconoRepartidorEnVivo() {
             if(marcadorMiGpsActual) { map.removeLayer(marcadorMiGpsActual); marcadorMiGpsActual = null; }
         }
 
+        let _tokenTrazadoRutas = 0; // se incrementa en cada llamada para descartar fetch obsoletos
+
         function trazarLineasYCalcularTiemposOSRM() {
             lineasRutasCapas.forEach(l => map.removeLayer(l));
             lineasRutasCapas = [];
+
+            _tokenTrazadoRutas++;
+            const miTokenTrazado = _tokenTrazadoRutas;
 
             rutasEstructuradas.forEach((listaRuta, indiceRuta) => {
                 if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== indiceRuta) return;
@@ -1702,6 +1692,7 @@ function crearIconoRepartidorEnVivo() {
                 fetch(urlOsim)
                     .then(r => r.json())
                     .then(res => {
+                        if (miTokenTrazado !== _tokenTrazadoRutas) return; // ya hay una llamada más reciente, descartar
                         if (res.routes && res.routes[0]) {
                             let rutaCapa = L.geoJSON(res.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
                             lineasRutasCapas.push(rutaCapa);
@@ -1733,6 +1724,7 @@ function crearIconoRepartidorEnVivo() {
                                 fetch(`https://router.project-osrm.org/route/v1/driving/${coordsLL}?overview=false`)
                                     .then(r => r.json())
                                     .then(resLL => {
+                                        if (miTokenTrazado !== _tokenTrazadoRutas) return; // descartar resultado obsoleto
                                         if (!resLL.routes || !resLL.routes[0]) return;
                                         const legsLL = resLL.routes[0].legs || [];
                                         const _ahoraBase = new Date();
