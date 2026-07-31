@@ -393,7 +393,7 @@
         </div>
         <div class="content">
             <button id="adm-btn-depot" class="btn-depot-config" onclick="configurarDepositoManual()">⚙️ Ubicación TENATE</button>
-            <button id="adm-btn-sync" class="btn-sync" onclick="importarDatosDesdeSheets()">🔄 Sincronizar Google Sheets</button>
+            <button id="adm-btn-sync" class="btn-sync" onclick="importarDatosDesdeSheets().catch(() => alert('No se pudo sincronizar. Revisa tu conexión e intenta de nuevo.'))">🔄 Sincronizar Google Sheets</button>
             <button id="adm-btn-limpiar-registros" class="btn-limpiar-registros" style="display:none;" onclick="confirmarLimpiarRegistrosPedidos()">🗑️ Limpiar Estado / Pago / Ruta / Notas</button>
             <button id="adm-btn-resumen" class="btn-resumen-rutas" style="display:none;" onclick="mostrarResumenRutas()">📊 Resumen de Rutas</button>
             <button id="adm-btn-cierre" class="btn-cierre-dia" style="display:none;" onclick="mostrarCierreDia()">📋 Cierre de Día</button>
@@ -684,6 +684,32 @@
             }
         }
 
+        // Hace un fetch con límite de tiempo: si no responde en `timeoutMs`, se cancela
+        // y se rechaza la promesa (en vez de quedarse esperando indefinidamente, que es
+        // lo que pasaba en datos móviles con señal débil/alta latencia — en wifi la misma
+        // petición respondía a tiempo y por eso ahí sí funcionaba).
+        function fetchConTimeout(url, timeoutMs = 12000) {
+            const controller = new AbortController();
+            const idTimeout = setTimeout(() => controller.abort(), timeoutMs);
+            return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(idTimeout));
+        }
+
+        // Reintenta la carga inicial varias veces antes de rendirse: en datos móviles las
+        // fallas suelen ser pasajeras (un pico de latencia, un cambio de torre/celda, etc.)
+        function importarDatosDesdeSheetsConReintentos(intentosRestantes = 3) {
+            return importarDatosDesdeSheets().catch(err => {
+                console.warn("Falló la carga de datos, intentos restantes:", intentosRestantes - 1, err);
+                if (intentosRestantes > 1) {
+                    return new Promise(resolve => setTimeout(resolve, 2000)) // esperar 2s antes de reintentar
+                        .then(() => importarDatosDesdeSheetsConReintentos(intentosRestantes - 1));
+                }
+                // Se agotaron los intentos: no dejar la app colgada — avisar y permitir
+                // seguir usando la pantalla de selección de rol (se puede reintentar con
+                // el botón "Sincronizar Google Sheets" en cuanto haya mejor señal).
+                alert("No se pudo conectar para cargar los datos (revisa tu conexión). Puedes intentar de nuevo con el botón 'Sincronizar Google Sheets' en cuanto tengas mejor señal.");
+            });
+        }
+
         function importarDatosDesdeSheets() {
             if(URL_GOOGLE_SCRIPT.trim() === "") return Promise.resolve();
             limpiarTodoElMapa();
@@ -692,7 +718,7 @@
             llegadasEstimadasPorCliente = {};
             trayectosMinutosPorCliente = {};
 
-            return fetch(URL_GOOGLE_SCRIPT)
+            return fetchConTimeout(URL_GOOGLE_SCRIPT)
                 .then(res => res.json())
                 .then(datosNube => {
                     if(datosNube.error) { alert("Error: " + datosNube.error); return; }
@@ -729,7 +755,13 @@
                         trazarLineasYCalcularTiemposOSRM();
                     }
                 })
-                .catch(err => alert("Error al conectar con la base de datos: " + err));
+                .catch(err => {
+                    console.warn("importarDatosDesdeSheets falló:", err);
+                    throw err; // se deja pasar el error para que quien llame decida qué hacer
+                    // (antes aquí se mostraba un alert crudo con el error técnico, lo cual
+                    // impedía que los reintentos automáticos de importarDatosDesdeSheetsConReintentos
+                    // llegaran a activarse, porque la promesa terminaba resuelta en vez de rechazada)
+                });
         }
 
         // ─── Sincronización ligera (silenciosa) ──────────────────────────────────
@@ -1155,7 +1187,7 @@
                 alert("✅ Registros borrados correctamente. Sincronizando...");
                 document.getElementById("adm-btn-limpiar-registros").innerText = botonOriginalTexto;
                 document.getElementById("adm-btn-limpiar-registros").disabled = false;
-                importarDatosDesdeSheets();
+                importarDatosDesdeSheets().catch(() => {});
             }).catch(() => {
                 alert("⚠️ Ocurrió un error al intentar limpiar los registros.");
                 document.getElementById("adm-btn-limpiar-registros").innerText = botonOriginalTexto;
@@ -1552,7 +1584,7 @@ function crearIconoRepartidorEnVivo() {
             fetch(URL_GOOGLE_SCRIPT, {
                 method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ nombre: cliente.nombre, accion: "guardar_coordenadas", coordinates: `${lat}, ${lng}` })
-            }).then(() => { importarDatosDesdeSheets(); });
+            }).then(() => { importarDatosDesdeSheets().catch(() => {}); });
         }
 
         function capturarGpsEnVivoRepartidor(id) {
@@ -2745,7 +2777,7 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
         }
 
         document.getElementById("hora-salida-ruta").value = horaSalidaRuta;
-        importarDatosDesdeSheets().then(() => {
+        importarDatosDesdeSheetsConReintentos().then(() => {
             // Restaurar sesión si el usuario regresó desde otra app, o si el navegador
             // fue recargado/matado por el sistema operativo en segundo plano
             const rolGuardado = localStorage.getItem("tenate_rol");
