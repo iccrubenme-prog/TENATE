@@ -370,7 +370,7 @@
     <div id="role-gate-modal">
         <div class="gate-box">
             <h2 class="gate-title">Logística TENATE<br><span style="font-size:14px; color:#7f8c8d; font-weight:normal;">Identificación de Usuario</span></h2>
-            <button class="btn-role-choice btn-admin-choice" onclick="seleccionarRolSistema('admin')">🔑 Entrar como Administrador</button>
+            <button class="btn-role-choice btn-admin-choice" onclick="intentarEntrarComoAdmin()">🔑 Entrar como Administrador</button>
             <button class="btn-role-choice btn-driver-choice" onclick="mostrarSeccionRutaRepartidor()">🚗 Entrar como Repartidor</button>
             <div id="box-seleccion-ruta-driver" class="driver-select-box">
                 <label style="font-size:12px; font-weight:bold; color:#555; display:block; margin-bottom:5px;">Selecciona el Día:</label>
@@ -464,6 +464,7 @@
         let clientes = [];
         let rutasEstructuradas = [];
         let tiemposEstimadosRutas = {};
+        let minutosTotalesPorRuta = {}; // { indiceRuta: minutos totales (trayecto + reparto) } — usado para ordenar el menú del repartidor
         // Factor de tráfico dinámico según día y hora (calibrado para zona urbana Puebla)
         function obtenerFactorTrafico() {
             const ahora = new Date();
@@ -933,8 +934,14 @@
                 }
             });
 
-            // Mostrar solo rutas que tengan clientes del día elegido
-            const rutasDelDia = Object.keys(nombresPorRutaDia).map(Number).sort((a, b) => a - b);
+            // Mostrar solo rutas que tengan clientes del día elegido, ordenadas de la que
+            // más tiempo total (trayecto + reparto) va a tardar a la que menos. Las rutas
+            // cuyo tiempo aún no se ha calculado (sin conexión OSRM todavía) quedan al final.
+            const rutasDelDia = Object.keys(nombresPorRutaDia).map(Number).sort((a, b) => {
+                const tiempoA = minutosTotalesPorRuta[a] !== undefined ? minutosTotalesPorRuta[a] : -1;
+                const tiempoB = minutosTotalesPorRuta[b] !== undefined ? minutosTotalesPorRuta[b] : -1;
+                return tiempoB - tiempoA;
+            });
 
             if (rutasDelDia.length === 0) {
                 selectGate.innerHTML = '<option value="">Sin rutas para este día</option>';
@@ -943,7 +950,11 @@
 
             rutasDelDia.forEach(r => {
                 const etiqueta = nombresPorRutaDia[r] ? `Ruta ${nombresPorRutaDia[r]}` : `Ruta ${r + 1}`;
-                selectGate.innerHTML += `<option value="${r}">${etiqueta}</option>`;
+                const mins = minutosTotalesPorRuta[r];
+                const textoTiempo = (mins !== undefined && mins >= 0)
+                    ? ` (${mins > 60 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : mins + ' min'})`
+                    : '';
+                selectGate.innerHTML += `<option value="${r}">${etiqueta}${textoTiempo}</option>`;
             });
         }
 
@@ -1750,6 +1761,7 @@ function crearIconoRepartidorEnVivo() {
                             let textoTotal = minsTotal > 60 ? `${Math.floor(minsTotal/60)}h ${minsTotal%60}m` : `${minsTotal} mins`;
 
                             tiemposEstimadosRutas[indiceRuta] = `Trayecto: ${textoT} | Reparto: ${textoR} | Total Recorrido: ${textoTotal}`;
+                            minutosTotalesPorRuta[indiceRuta] = minsTotal;
 
                             // Calcular horas de llegada usando la ruta COMPLETA (sin filtro de cliente)
                             // para que la secuencia sea correcta independientemente del filtro activo
@@ -1852,6 +1864,7 @@ function crearIconoRepartidorEnVivo() {
                     let textoTotal = minsTotal > 60 ? `${Math.floor(minsTotal/60)}h ${minsTotal%60}m` : `${minsTotal} mins`;
 
                     tiemposEstimadosRutas[indiceRuta] = `Trayecto: ${textoT} | Reparto: ${textoR} | Total Recorrido: ${textoTotal}`;
+                    minutosTotalesPorRuta[indiceRuta] = minsTotal;
 
                     const [hSal, mSal] = horaSalidaRuta.split(':').map(Number);
                     let minutosAcumulados = (hSal * 60) + mSal;
@@ -2413,6 +2426,17 @@ function crearIconoRepartidorEnVivo() {
 
         function mostrarSeccionRutaRepartidor() {
             document.getElementById("box-seleccion-ruta-driver").style.display = "block";
+        }
+
+        const CONTRASENA_ADMIN = "ADM2026";
+        function intentarEntrarComoAdmin() {
+            const intento = prompt("Contraseña de administrador:");
+            if (intento === null) return; // canceló
+            if (intento === CONTRASENA_ADMIN) {
+                seleccionarRolSistema('admin');
+            } else {
+                alert("Contraseña incorrecta.");
+            }
         }
 
         function seleccionarRolSistema(rol) {
