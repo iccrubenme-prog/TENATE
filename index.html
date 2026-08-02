@@ -464,7 +464,6 @@
         let clientes = [];
         let rutasEstructuradas = [];
         let tiemposEstimadosRutas = {};
-        let minutosTotalesPorRuta = {}; // { indiceRuta: minutos totales (trayecto + reparto) } — usado para ordenar el menú del repartidor
         // Factor de tráfico dinámico según día y hora (calibrado para zona urbana Puebla)
         function obtenerFactorTrafico() {
             const ahora = new Date();
@@ -934,14 +933,8 @@
                 }
             });
 
-            // Mostrar solo rutas que tengan clientes del día elegido, ordenadas de la que
-            // más tiempo total (trayecto + reparto) va a tardar a la que menos. Las rutas
-            // cuyo tiempo aún no se ha calculado (sin conexión OSRM todavía) quedan al final.
-            const rutasDelDia = Object.keys(nombresPorRutaDia).map(Number).sort((a, b) => {
-                const tiempoA = minutosTotalesPorRuta[a] !== undefined ? minutosTotalesPorRuta[a] : -1;
-                const tiempoB = minutosTotalesPorRuta[b] !== undefined ? minutosTotalesPorRuta[b] : -1;
-                return tiempoB - tiempoA;
-            });
+            // Mostrar solo rutas que tengan clientes del día elegido
+            const rutasDelDia = Object.keys(nombresPorRutaDia).map(Number).sort((a, b) => a - b);
 
             if (rutasDelDia.length === 0) {
                 selectGate.innerHTML = '<option value="">Sin rutas para este día</option>';
@@ -950,11 +943,7 @@
 
             rutasDelDia.forEach(r => {
                 const etiqueta = nombresPorRutaDia[r] ? `Ruta ${nombresPorRutaDia[r]}` : `Ruta ${r + 1}`;
-                const mins = minutosTotalesPorRuta[r];
-                const textoTiempo = (mins !== undefined && mins >= 0)
-                    ? ` (${mins > 60 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : mins + ' min'})`
-                    : '';
-                selectGate.innerHTML += `<option value="${r}">${etiqueta}${textoTiempo}</option>`;
+                selectGate.innerHTML += `<option value="${r}">${etiqueta}</option>`;
             });
         }
 
@@ -1761,7 +1750,6 @@ function crearIconoRepartidorEnVivo() {
                             let textoTotal = minsTotal > 60 ? `${Math.floor(minsTotal/60)}h ${minsTotal%60}m` : `${minsTotal} mins`;
 
                             tiemposEstimadosRutas[indiceRuta] = `Trayecto: ${textoT} | Reparto: ${textoR} | Total Recorrido: ${textoTotal}`;
-                            minutosTotalesPorRuta[indiceRuta] = minsTotal;
 
                             // Calcular horas de llegada usando la ruta COMPLETA (sin filtro de cliente)
                             // para que la secuencia sea correcta independientemente del filtro activo
@@ -1864,7 +1852,6 @@ function crearIconoRepartidorEnVivo() {
                     let textoTotal = minsTotal > 60 ? `${Math.floor(minsTotal/60)}h ${minsTotal%60}m` : `${minsTotal} mins`;
 
                     tiemposEstimadosRutas[indiceRuta] = `Trayecto: ${textoT} | Reparto: ${textoR} | Total Recorrido: ${textoTotal}`;
-                    minutosTotalesPorRuta[indiceRuta] = minsTotal;
 
                     const [hSal, mSal] = horaSalidaRuta.split(':').map(Number);
                     let minutosAcumulados = (hSal * 60) + mSal;
@@ -2481,6 +2468,9 @@ function crearIconoRepartidorEnVivo() {
                     localStorage.setItem("tenate_filtro_dia", diaSeleccionadoGate);
                     const selectDiaAdmin = document.getElementById("filtro-dia");
                     if (selectDiaAdmin) selectDiaAdmin.value = diaSeleccionadoGate;
+                    // Sin esto, rutasEstructuradas se queda con el día que estaba activo
+                    // al cargar la página, y la ruta elegida aparece vacía hasta recargar.
+                    reconstruirRutasEstructuradasDesdeClientes();
                 }
 
                 subtitulo.innerText = `Vista Repartidor - Ruta ${parseInt(rutaSeleccionada) + 1}`;
