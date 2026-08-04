@@ -1986,7 +1986,64 @@ function crearIconoRepartidorEnVivo() {
 
                     alert("¡Ruta reoptimizada con éxito según tu posición actual incorporando el regreso a El Tenate!");
                     refrescarMapaYListasVisuales();
-                    trazarLineasYCalcularTiemposOSRM();
+
+                    // Se dibuja la línea de la ruta y se calculan las horas de llegada en la
+                    // MISMA petición a OSRM, partiendo de tu GPS actual (no del depósito) —
+                    // así evitamos que compita con el cálculo normal (que sí parte del
+                    // depósito) y que uno termine pisando al otro.
+                    const puntosParaLlegadasVivo = [
+                        gpsRepartidor,
+                        ...rutasEstructuradas[idxRuta].filter(p =>
+                            p.id === 0 || (
+                                p.lat !== null && p.lng !== null && !p.entregado &&
+                                (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                            )
+                        ).slice(1) // se quita el depósito inicial del arreglo original, ya que ahora el punto de partida es el GPS
+                    ];
+
+                    if (puntosParaLlegadasVivo.length >= 2) {
+                        lineasRutasCapas.forEach(l => map.removeLayer(l));
+                        lineasRutasCapas = [];
+
+                        _tokenTrazadoRutas++;
+                        const miTokenVivo = _tokenTrazadoRutas;
+
+                        const FACTOR_TRAFICO = obtenerFactorTrafico();
+                        const MINUTOS_POR_CLIENTE = 10;
+                        const coordsVivo = puntosParaLlegadasVivo.map(p => `${p.lng},${p.lat}`).join(';');
+                        fetch(`https://router.project-osrm.org/route/v1/driving/${coordsVivo}?overview=full&geometries=geojson`)
+                            .then(r => r.json())
+                            .then(resVivo => {
+                                if (miTokenVivo !== _tokenTrazadoRutas) return; // ya hay una llamada más reciente
+                                if (!resVivo.routes || !resVivo.routes[0]) return;
+
+                                const colorRuta = obtenerColorRuta(idxRuta);
+                                const rutaCapa = L.geoJSON(resVivo.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
+                                lineasRutasCapas.push(rutaCapa);
+
+                                const legsVivo = resVivo.routes[0].legs || [];
+                                const ahora = new Date();
+                                let minutosAcumulados = (ahora.getHours() * 60) + ahora.getMinutes();
+                                let coordPrevVivo = null, horaCoordVivo = minutosAcumulados;
+                                for (let i = 0; i < puntosParaLlegadasVivo.length; i++) {
+                                    const punto = puntosParaLlegadasVivo[i];
+                                    if (i > 0 && legsVivo[i - 1]) {
+                                        minutosAcumulados += (legsVivo[i - 1].duration / 60) * FACTOR_TRAFICO;
+                                    }
+                                    if (punto.id !== 0) {
+                                        const ck = `${Math.round(punto.lat*1e6)}_${Math.round(punto.lng*1e6)}`;
+                                        if (ck !== coordPrevVivo) {
+                                            if (coordPrevVivo !== null) minutosAcumulados += MINUTOS_POR_CLIENTE;
+                                            coordPrevVivo = ck;
+                                            horaCoordVivo = minutosAcumulados;
+                                        }
+                                        llegadasEstimadasPorCliente[punto.id] = formatearHora(horaCoordVivo);
+                                    }
+                                }
+                                refrescarMapaYListasVisuales();
+                            })
+                            .catch(() => {});
+                    }
 
                 }, () => {
                     alert("No se pudo acceder al GPS de tu dispositivo.");
