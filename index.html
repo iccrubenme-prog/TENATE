@@ -747,10 +747,16 @@
                         });
                     });
 
+                    // poblarFiltroDia() valida diaActivoFiltrado contra los días que realmente
+                    // existen en los datos actuales (y lo corrige a "todos" si el valor guardado
+                    // de una sesión anterior ya no es válido) — por eso debe ejecutarse ANTES de
+                    // reconstruir las rutas. Si se reconstruye primero con un día inválido/viejo,
+                    // no hay ningún cliente que coincida y el mapa se queda vacío, aunque el
+                    // selector visualmente muestre "Todos los días" (su opción por defecto).
+                    poblarFiltroDia();
                     reconstruirRutasEstructuradasDesdeClientes();
 
                     actualizarSelectoresDeRutaDinamicos();
-                    poblarFiltroDia();
                     construirListaCheckboxClientes();
                     refrescarMapaYListasVisuales();
                     if(rutasOptimizadasActivas) {
