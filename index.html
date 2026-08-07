@@ -3020,6 +3020,18 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
         }
 
         function regresarAPantallaDeRoles() {
+            // Si quien sale es el repartidor, avisar al backend para que su punto
+            // desaparezca del mapa del admin de inmediato (no esperar a que expire solo).
+            if (ROL_ACTUAL === "repartidor") {
+                const idxRutaSaliente = parseInt(rutaActivaFiltrada);
+                if (!isNaN(idxRutaSaliente) && URL_GOOGLE_SCRIPT.trim() !== "") {
+                    fetch(URL_GOOGLE_SCRIPT, {
+                        method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ accion: "borrar_ubicacion_repartidor", idxRuta: idxRutaSaliente })
+                    }).catch(() => {});
+                }
+            }
+
             document.getElementById("box-seleccion-ruta-driver").style.display = "none";
             document.getElementById("role-gate-modal").style.display = "flex";
             limpiarTodoElMapa();
