@@ -863,7 +863,7 @@
 
         function iniciarSincroniaLigeraAutomatica() {
             if (intervaloSincroniaLigera) clearInterval(intervaloSincroniaLigera);
-            intervaloSincroniaLigera = setInterval(sincronizacionLigeraEstatus, 2000); // cada 10 segundos
+            intervaloSincroniaLigera = setInterval(sincronizacionLigeraEstatus, 10000); // cada 10 segundos
         }
 
         function construirMapaNombresPorRuta() {
@@ -1696,6 +1696,13 @@ function crearIconoRepartidorEnVivo() {
 
         let _tokenTrazadoRutas = 0; // se incrementa en cada llamada para descartar fetch obsoletos
 
+        // Recuerda la última posición GPS real del repartidor (capturada al usar el botón
+        // "Reoptimizar Mi Ruta") y para qué ruta aplica. Así, cuando la sincronización
+        // automática vuelve a llamar a trazarLineasYCalcularTiemposOSRM (p. ej. al detectar
+        // el cambio de orden que el propio botón acaba de guardar), la línea y las horas
+        // siguen partiendo de tu posición real en vez de reiniciar desde El Tenate.
+        let ultimaPosicionGPSVivo = null; // { lat, lng, idxRuta }
+
         function trazarLineasYCalcularTiemposOSRM() {
             lineasRutasCapas.forEach(l => map.removeLayer(l));
             lineasRutasCapas = [];
@@ -1723,6 +1730,24 @@ function crearIconoRepartidorEnVivo() {
                         (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
                     )
                 );
+
+                // Si ya conocemos la posición GPS real del repartidor de esta ruta —ya sea
+                // porque somos el repartidor y acabamos de reoptimizar (ultimaPosicionGPSVivo),
+                // o porque somos el admin y la sincronizamos desde el backend
+                // (posicionesGPSPorRutaAdmin)— seguimos partiendo desde ahí en vez de El
+                // Tenate, para que ambas vistas dibujen exactamente la misma línea.
+                let origenGpsParaEstaRuta = null;
+                if (ROL_ACTUAL === "repartidor" && ultimaPosicionGPSVivo && ultimaPosicionGPSVivo.idxRuta === indiceRuta) {
+                    origenGpsParaEstaRuta = ultimaPosicionGPSVivo;
+                } else if (ROL_ACTUAL === "admin" && posicionesGPSPorRutaAdmin[indiceRuta]) {
+                    origenGpsParaEstaRuta = posicionesGPSPorRutaAdmin[indiceRuta];
+                }
+                if (origenGpsParaEstaRuta) {
+                    const puntoGpsVivo = { id: 0, lat: origenGpsParaEstaRuta.lat, lng: origenGpsParaEstaRuta.lng };
+                    if (puntosValidos.length > 0 && puntosValidos[0].id === 0) puntosValidos = [puntoGpsVivo, ...puntosValidos.slice(1)];
+                    if (puntosParaLlegadas.length > 0 && puntosParaLlegadas[0].id === 0) puntosParaLlegadas.splice(0, 1, puntoGpsVivo);
+                }
+
                 if (puntosValidos.length < 2) return;
 
                 let colorRuta = obtenerColorRuta(indiceRuta);
@@ -1927,6 +1952,135 @@ function crearIconoRepartidorEnVivo() {
             });
         }
 
+        // Núcleo de la reoptimización desde una posición GPS dada: reordena pendientes,
+        // persiste ruta+cte, dibuja la línea y calcula horas — todo partiendo de esa
+        // posición en vez de El Tenate. Sin confirm()/alert(): la usan tanto el botón
+        // manual (que sí pide confirmación) como el seguimiento automático (silencioso).
+        // Devuelve true si reoptimizó algo, false si no había nada pendiente.
+        function reoptimizarYRecalcularDesdeGPS(latVivo, lngVivo) {
+            if (ROL_ACTUAL !== "repartidor") return false;
+            const idxRuta = parseInt(rutaActivaFiltrada);
+            if (isNaN(idxRuta) || !rutasEstructuradas[idxRuta]) return false;
+
+            let gpsRepartidor = { id: 0, nombre: "Mi GPS Actual", lat: latVivo, lng: lngVivo };
+            ultimaPosicionGPSVivo = { lat: latVivo, lng: lngVivo, idxRuta: idxRuta };
+
+            if (marcadorMiGpsActual) map.removeLayer(marcadorMiGpsActual);
+            marcadorMiGpsActual = L.marker([latVivo, lngVivo], { icon: crearIconoRepartidorEnVivo() }).addTo(map);
+
+            // Solo reoptimizamos los clientes del día activo (si hay filtro de día).
+            // Los clientes de otros días en la misma ruta NO se tocan ni renumeran.
+            const enDiaActivo = p => diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado;
+
+            let pendientes = rutasEstructuradas[idxRuta].filter(p =>
+                p.id !== 0 && p.lat !== null && p.lng !== null && !p.entregado && enDiaActivo(p)
+            );
+            let estaticos = rutasEstructuradas[idxRuta].filter(p =>
+                p.id !== 0 && (p.id === 0 || p.lat === null || p.lng === null || p.entregado || !enDiaActivo(p))
+            );
+            // Clientes de OTROS días: se conservan exactamente igual, con su #Cte intacto
+            const otrosDias = rutasEstructuradas[idxRuta].filter(p => p.id !== 0 && !enDiaActivo(p));
+
+            if (pendientes.length === 0) return false;
+
+            // Se optimiza partiendo desde el GPS actual del repartidor
+            let subRutaReoptimizada = optimizarOrdenInternoVecino(pendientes, gpsRepartidor);
+
+            // Reconstruir: depósito + recorrido optimizado (del día activo) + estáticos/entregados del día activo + otros días intactos
+            const estaticosDelDia = estaticos.filter(p => enDiaActivo(p));
+            rutasEstructuradas[idxRuta] = [
+                deposito,
+                ...subRutaReoptimizada.slice(1),
+                ...estaticosDelDia,
+                ...otrosDias
+            ];
+
+            // Recalcular el orden fijo (#Cte) SOLO para los clientes del día activo
+            // (recorrido optimizado + estáticos/entregados de ese día), respetando la
+            // numeración que ya tenían los clientes de otros días dentro de la misma ruta.
+            let ordenVisita = 0;
+            let asignacionesCte = [];
+            [...subRutaReoptimizada.slice(1), ...estaticosDelDia].forEach(p => {
+                if (p.id === 0) return;
+                ordenVisita++;
+                p.cte = ordenVisita;
+                asignacionesCte.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${idxRuta + 1}`, cte: p.cte });
+            });
+
+            fetch(URL_GOOGLE_SCRIPT, {
+                method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accion: "guardar_rutas_masivo", asignaciones: asignacionesCte })
+            }).catch(() => {});
+
+            // Enviar la ubicación en vivo, para que el admin la vea en su mapa
+            fetch(URL_GOOGLE_SCRIPT, {
+                method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accion: "guardar_ubicacion_repartidor", idxRuta: idxRuta, lat: latVivo, lng: lngVivo })
+            }).catch(() => {});
+
+            refrescarMapaYListasVisuales();
+
+            // Se dibuja la línea de la ruta y se calculan las horas de llegada en la
+            // MISMA petición a OSRM, partiendo de tu GPS actual (no del depósito) —
+            // así evitamos que compita con el cálculo normal (que sí parte del
+            // depósito) y que uno termine pisando al otro.
+            const puntosParaLlegadasVivo = [
+                gpsRepartidor,
+                ...rutasEstructuradas[idxRuta].filter(p =>
+                    p.id === 0 || (
+                        p.lat !== null && p.lng !== null && !p.entregado &&
+                        (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                    )
+                ).slice(1) // se quita el depósito inicial del arreglo original, ya que ahora el punto de partida es el GPS
+            ];
+
+            if (puntosParaLlegadasVivo.length >= 2) {
+                lineasRutasCapas.forEach(l => map.removeLayer(l));
+                lineasRutasCapas = [];
+
+                _tokenTrazadoRutas++;
+                const miTokenVivo = _tokenTrazadoRutas;
+
+                const FACTOR_TRAFICO = obtenerFactorTrafico();
+                const MINUTOS_POR_CLIENTE = 10;
+                const coordsVivo = puntosParaLlegadasVivo.map(p => `${p.lng},${p.lat}`).join(';');
+                fetch(`https://router.project-osrm.org/route/v1/driving/${coordsVivo}?overview=full&geometries=geojson`)
+                    .then(r => r.json())
+                    .then(resVivo => {
+                        if (miTokenVivo !== _tokenTrazadoRutas) return; // ya hay una llamada más reciente
+                        if (!resVivo.routes || !resVivo.routes[0]) return;
+
+                        const colorRuta = obtenerColorRuta(idxRuta);
+                        const rutaCapa = L.geoJSON(resVivo.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
+                        lineasRutasCapas.push(rutaCapa);
+
+                        const legsVivo = resVivo.routes[0].legs || [];
+                        const ahora = new Date();
+                        let minutosAcumulados = (ahora.getHours() * 60) + ahora.getMinutes();
+                        let coordPrevVivo = null, horaCoordVivo = minutosAcumulados;
+                        for (let i = 0; i < puntosParaLlegadasVivo.length; i++) {
+                            const punto = puntosParaLlegadasVivo[i];
+                            if (i > 0 && legsVivo[i - 1]) {
+                                minutosAcumulados += (legsVivo[i - 1].duration / 60) * FACTOR_TRAFICO;
+                            }
+                            if (punto.id !== 0) {
+                                const ck = `${Math.round(punto.lat*1e6)}_${Math.round(punto.lng*1e6)}`;
+                                if (ck !== coordPrevVivo) {
+                                    if (coordPrevVivo !== null) minutosAcumulados += MINUTOS_POR_CLIENTE;
+                                    coordPrevVivo = ck;
+                                    horaCoordVivo = minutosAcumulados;
+                                }
+                                llegadasEstimadasPorCliente[punto.id] = formatearHora(horaCoordVivo);
+                            }
+                        }
+                        refrescarMapaYListasVisuales();
+                    })
+                    .catch(() => {});
+            }
+
+            return true;
+        }
+
         function reoptimizarRutaDesdeUbicacionActual() {
             if (ROL_ACTUAL !== "repartidor") return;
             const idxRuta = parseInt(rutaActivaFiltrada);
@@ -1934,127 +2088,61 @@ function crearIconoRepartidorEnVivo() {
 
             if (confirm("¿Quieres recalcular el orden de tus entregas pendientes basándote en tu ubicación actual?")) {
                 navigator.geolocation.getCurrentPosition(position => {
-                    let latVivo = position.coords.latitude;
-                    let lngVivo = position.coords.longitude;
-                    let gpsRepartidor = { id: 0, nombre: "Mi GPS Actual", lat: latVivo, lng: lngVivo };
-
-                    if(marcadorMiGpsActual) map.removeLayer(marcadorMiGpsActual);
-
-                    marcadorMiGpsActual = L.marker([latVivo, lngVivo], { icon: crearIconoRepartidorEnVivo() }).addTo(map);
-                    marcadorMiGpsActual.bindPopup("<b>Mi Ubicación Actual</b><br>Punto de partida en vivo").openPopup();
-
-                    // Solo reoptimizamos los clientes del día activo (si hay filtro de día).
-                    // Los clientes de otros días en la misma ruta NO se tocan ni renumeran.
-                    const enDiaActivo = p => diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado;
-
-                    let pendientes = rutasEstructuradas[idxRuta].filter(p =>
-                        p.id !== 0 && p.lat !== null && p.lng !== null && !p.entregado && enDiaActivo(p)
-                    );
-                    let estaticos = rutasEstructuradas[idxRuta].filter(p =>
-                        p.id !== 0 && (p.id === 0 || p.lat === null || p.lng === null || p.entregado || !enDiaActivo(p))
-                    );
-                    // Clientes de OTROS días: se conservan exactamente igual, con su #Cte intacto
-                    const otrosDias = rutasEstructuradas[idxRuta].filter(p => p.id !== 0 && !enDiaActivo(p));
-
-                    if (pendientes.length === 0) {
+                    const exito = reoptimizarYRecalcularDesdeGPS(position.coords.latitude, position.coords.longitude);
+                    if (exito === false) {
                         alert("No tienes clientes pendientes con coordenadas para reoptimizar.");
-                        return;
+                    } else {
+                        alert("¡Ruta reoptimizada con éxito según tu posición actual incorporando el regreso a El Tenate!");
                     }
-
-                    // Se optimiza partiendo desde el GPS actual del repartidor
-                    let subRutaReoptimizada = optimizarOrdenInternoVecino(pendientes, gpsRepartidor);
-
-                    // Reconstruir: depósito + recorrido optimizado (del día activo) + estáticos/entregados del día activo + otros días intactos
-                    const estaticosDelDia = estaticos.filter(p => enDiaActivo(p));
-                    rutasEstructuradas[idxRuta] = [
-                        deposito,
-                        ...subRutaReoptimizada.slice(1),
-                        ...estaticosDelDia,
-                        ...otrosDias
-                    ];
-
-                    // Recalcular el orden fijo (#Cte) SOLO para los clientes del día activo
-                    // (recorrido optimizado + estáticos/entregados de ese día), respetando la
-                    // numeración que ya tenían los clientes de otros días dentro de la misma ruta.
-                    let ordenVisita = 0;
-                    let asignacionesCte = [];
-                    [...subRutaReoptimizada.slice(1), ...estaticosDelDia].forEach(p => {
-                        if (p.id === 0) return;
-                        ordenVisita++;
-                        p.cte = ordenVisita;
-                        asignacionesCte.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${idxRuta + 1}`, cte: p.cte });
-                    });
-
-                    fetch(URL_GOOGLE_SCRIPT, {
-                        method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ accion: "guardar_rutas_masivo", asignaciones: asignacionesCte })
-                    });
-
-                    alert("¡Ruta reoptimizada con éxito según tu posición actual incorporando el regreso a El Tenate!");
-                    refrescarMapaYListasVisuales();
-
-                    // Se dibuja la línea de la ruta y se calculan las horas de llegada en la
-                    // MISMA petición a OSRM, partiendo de tu GPS actual (no del depósito) —
-                    // así evitamos que compita con el cálculo normal (que sí parte del
-                    // depósito) y que uno termine pisando al otro.
-                    const puntosParaLlegadasVivo = [
-                        gpsRepartidor,
-                        ...rutasEstructuradas[idxRuta].filter(p =>
-                            p.id === 0 || (
-                                p.lat !== null && p.lng !== null && !p.entregado &&
-                                (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
-                            )
-                        ).slice(1) // se quita el depósito inicial del arreglo original, ya que ahora el punto de partida es el GPS
-                    ];
-
-                    if (puntosParaLlegadasVivo.length >= 2) {
-                        lineasRutasCapas.forEach(l => map.removeLayer(l));
-                        lineasRutasCapas = [];
-
-                        _tokenTrazadoRutas++;
-                        const miTokenVivo = _tokenTrazadoRutas;
-
-                        const FACTOR_TRAFICO = obtenerFactorTrafico();
-                        const MINUTOS_POR_CLIENTE = 10;
-                        const coordsVivo = puntosParaLlegadasVivo.map(p => `${p.lng},${p.lat}`).join(';');
-                        fetch(`https://router.project-osrm.org/route/v1/driving/${coordsVivo}?overview=full&geometries=geojson`)
-                            .then(r => r.json())
-                            .then(resVivo => {
-                                if (miTokenVivo !== _tokenTrazadoRutas) return; // ya hay una llamada más reciente
-                                if (!resVivo.routes || !resVivo.routes[0]) return;
-
-                                const colorRuta = obtenerColorRuta(idxRuta);
-                                const rutaCapa = L.geoJSON(resVivo.routes[0].geometry, { color: colorRuta, weight: 4, opacity: 0.7 }).addTo(map);
-                                lineasRutasCapas.push(rutaCapa);
-
-                                const legsVivo = resVivo.routes[0].legs || [];
-                                const ahora = new Date();
-                                let minutosAcumulados = (ahora.getHours() * 60) + ahora.getMinutes();
-                                let coordPrevVivo = null, horaCoordVivo = minutosAcumulados;
-                                for (let i = 0; i < puntosParaLlegadasVivo.length; i++) {
-                                    const punto = puntosParaLlegadasVivo[i];
-                                    if (i > 0 && legsVivo[i - 1]) {
-                                        minutosAcumulados += (legsVivo[i - 1].duration / 60) * FACTOR_TRAFICO;
-                                    }
-                                    if (punto.id !== 0) {
-                                        const ck = `${Math.round(punto.lat*1e6)}_${Math.round(punto.lng*1e6)}`;
-                                        if (ck !== coordPrevVivo) {
-                                            if (coordPrevVivo !== null) minutosAcumulados += MINUTOS_POR_CLIENTE;
-                                            coordPrevVivo = ck;
-                                            horaCoordVivo = minutosAcumulados;
-                                        }
-                                        llegadasEstimadasPorCliente[punto.id] = formatearHora(horaCoordVivo);
-                                    }
-                                }
-                                refrescarMapaYListasVisuales();
-                            })
-                            .catch(() => {});
-                    }
-
                 }, () => {
                     alert("No se pudo acceder al GPS de tu dispositivo.");
                 }, { enableHighAccuracy: true });
             }
+        }
+
+        // ── Seguimiento GPS en vivo del repartidor ────────────────────────────────
+        // Mientras el repartidor tiene su vista abierta, se sigue su posición real y,
+        // cuando se mueve lo suficiente, se reordenan las paradas pendientes desde ahí
+        // y se recalculan las horas — igual que Google Maps. Es silencioso: no pide
+        // confirmación en cada ajuste, para no interrumpir mientras maneja.
+        let watchIdGPSVivo = null;
+        let ultimaPosicionRecalculada = null; // {lat, lng} — para medir cuánto se ha movido
+        let ultimoRecalculoAutoTimestamp = 0;
+        const UMBRAL_RECALCULO_METROS = 150;         // no recalcular por jitter de GPS estando quieto
+        const INTERVALO_MINIMO_RECALCULO_MS = 60000;  // máximo 1 recálculo automático por minuto
+
+        function distanciaMetrosEntreCoords(lat1, lng1, lat2, lng2) {
+            const R = 6371000;
+            const toRad = d => d * Math.PI / 180;
+            const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function iniciarSeguimientoGPSEnVivo() {
+            if (ROL_ACTUAL !== "repartidor" || !navigator.geolocation || watchIdGPSVivo !== null) return;
+            watchIdGPSVivo = navigator.geolocation.watchPosition(
+                position => manejarNuevaPosicionGPSVivo(position.coords.latitude, position.coords.longitude),
+                err => console.warn("Seguimiento GPS en vivo no disponible:", err.message),
+                { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+            );
+        }
+
+        function detenerSeguimientoGPSEnVivo() {
+            if (watchIdGPSVivo !== null) { navigator.geolocation.clearWatch(watchIdGPSVivo); watchIdGPSVivo = null; }
+            ultimaPosicionRecalculada = null;
+        }
+
+        function manejarNuevaPosicionGPSVivo(lat, lng) {
+            const ahora = Date.now();
+            const seMovioLoSuficiente = !ultimaPosicionRecalculada ||
+                distanciaMetrosEntreCoords(lat, lng, ultimaPosicionRecalculada.lat, ultimaPosicionRecalculada.lng) >= UMBRAL_RECALCULO_METROS;
+            if (!seMovioLoSuficiente) return;
+            if (ahora - ultimoRecalculoAutoTimestamp < INTERVALO_MINIMO_RECALCULO_MS) return;
+
+            ultimaPosicionRecalculada = { lat, lng };
+            ultimoRecalculoAutoTimestamp = ahora;
+            reoptimizarYRecalcularDesdeGPS(lat, lng);
         }
 
         function calcularMultiRutasEquitativas() {
@@ -2489,8 +2577,89 @@ function crearIconoRepartidorEnVivo() {
             }
         }
 
+        // ── Ubicación en vivo de los repartidores (vista admin) ───────────────────
+        // Cada repartidor manda su posición al backend (ver reoptimizarYRecalcularDesdeGPS),
+        // y el admin la consulta periódicamente por un endpoint aparte (?accion=ubicaciones)
+        // que no toca la hoja de Pedidos. Se dibuja un punto por ruta, del mismo color que
+        // esa ruta tiene en el mapa, y se ignoran ubicaciones muy viejas (repartidor inactivo).
+        let marcadoresUbicacionRepartidores = {}; // { idxRuta: capa de Leaflet }
+        let intervaloUbicacionesRepartidores = null;
+        let posicionesGPSPorRutaAdmin = {}; // { idxRuta: {lat, lng} } — para que la línea del admin parta del mismo punto que ve el repartidor
+        const ANTIGUEDAD_MAXIMA_UBICACION_MS = 45 * 60 * 1000; // 45 min: después de eso se considera inactivo
+
+        function consultarUbicacionesRepartidores() {
+            if (ROL_ACTUAL !== "admin" || URL_GOOGLE_SCRIPT.trim() === "") return;
+            fetch(URL_GOOGLE_SCRIPT + "?accion=ubicaciones")
+                .then(r => r.json())
+                .then(ubicaciones => {
+                    const idxVistos = new Set();
+                    let huboUbicacionNuevaRelevante = false;
+                    Object.keys(ubicaciones).forEach(idxStr => {
+                        const idx = parseInt(idxStr);
+                        const u = ubicaciones[idxStr];
+                        if (!u || u.lat === undefined || u.lng === undefined) return;
+                        if (Date.now() - (u.ts || 0) > ANTIGUEDAD_MAXIMA_UBICACION_MS) return; // repartidor inactivo, no mostrar
+                        if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== idx) return; // respeta el filtro de ruta activo
+
+                        idxVistos.add(idx);
+                        const color = obtenerColorRuta(idx);
+                        const nombreRuta = `Ruta ${idx + 1}`;
+
+                        // Solo redibujamos si la posición cambió de forma real (no por el
+                        // ruido normal del GPS), para no generar peticiones OSRM de más y
+                        // no competir con el resto de redibujados en curso.
+                        const posPrevia = posicionesGPSPorRutaAdmin[idx];
+                        const cambioReal = !posPrevia || distanciaMetrosEntreCoords(u.lat, u.lng, posPrevia.lat, posPrevia.lng) >= 30;
+
+                        posicionesGPSPorRutaAdmin[idx] = { lat: u.lat, lng: u.lng };
+
+                        if (cambioReal && rutasOptimizadasActivas) huboUbicacionNuevaRelevante = true;
+
+                        if (marcadoresUbicacionRepartidores[idx]) {
+                            marcadoresUbicacionRepartidores[idx].setLatLng([u.lat, u.lng]);
+                        } else {
+                            marcadoresUbicacionRepartidores[idx] = L.circleMarker([u.lat, u.lng], {
+                                radius: 9,
+                                color: "#ffffff",
+                                weight: 2,
+                                fillColor: color,
+                                fillOpacity: 1
+                            }).addTo(map).bindTooltip(`🚚 ${nombreRuta} — en vivo`, { permanent: false });
+                        }
+                    });
+
+                    // Quitar puntos de rutas que ya no tienen ubicación vigente (repartidor cerró sesión, etc.)
+                    Object.keys(marcadoresUbicacionRepartidores).forEach(idxStr => {
+                        const idx = parseInt(idxStr);
+                        if (!idxVistos.has(idx)) {
+                            map.removeLayer(marcadoresUbicacionRepartidores[idx]);
+                            delete marcadoresUbicacionRepartidores[idx];
+                            delete posicionesGPSPorRutaAdmin[idx];
+                        }
+                    });
+
+                    // Redibujar la línea de la ruta para que arranque desde la posición real
+                    // del repartidor, igual que ve él — solo si algo cambió de verdad.
+                    if (huboUbicacionNuevaRelevante) trazarLineasYCalcularTiemposOSRM();
+                })
+                .catch(() => {});
+        }
+
+        function iniciarConsultaUbicacionesRepartidores() {
+            if (intervaloUbicacionesRepartidores) clearInterval(intervaloUbicacionesRepartidores);
+            consultarUbicacionesRepartidores();
+            intervaloUbicacionesRepartidores = setInterval(consultarUbicacionesRepartidores, 10000); // cada 10s
+        }
+
+        function detenerConsultaUbicacionesRepartidores() {
+            if (intervaloUbicacionesRepartidores) { clearInterval(intervaloUbicacionesRepartidores); intervaloUbicacionesRepartidores = null; }
+            Object.values(marcadoresUbicacionRepartidores).forEach(capa => map.removeLayer(capa));
+            marcadoresUbicacionRepartidores = {};
+        }
+
         function seleccionarRolSistema(rol) {
             ROL_ACTUAL = rol;
+            ultimaPosicionGPSVivo = null; // evita reusar una posición vieja de una sesión/ruta anterior
             document.getElementById("role-gate-modal").style.display = "none";
             document.body.classList.remove("vista-admin", "vista-repartidor");
             document.body.classList.add(rol === "admin" ? "vista-admin" : "vista-repartidor");
@@ -2568,6 +2737,15 @@ function crearIconoRepartidorEnVivo() {
             }
 
             iniciarSincroniaLigeraAutomatica();
+
+            // El seguimiento GPS en vivo solo aplica al repartidor (es quien se mueve).
+            if (ROL_ACTUAL === "repartidor") {
+                iniciarSeguimientoGPSEnVivo();
+                detenerConsultaUbicacionesRepartidores();
+            } else {
+                detenerSeguimientoGPSEnVivo();
+                iniciarConsultaUbicacionesRepartidores();
+            }
         }
 
         function cerrarResumenRutas() {
@@ -2849,6 +3027,9 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
             clientesSeleccionadosFiltro = [];
             document.getElementById("buscador-cliente-texto").value = "";
             if (intervaloSincroniaLigera) { clearInterval(intervaloSincroniaLigera); intervaloSincroniaLigera = null; }
+            detenerSeguimientoGPSEnVivo();
+            detenerConsultaUbicacionesRepartidores();
+            ultimaPosicionGPSVivo = null;
             // Limpiar estado guardado al salir voluntariamente
             localStorage.removeItem("tenate_rol");
             localStorage.removeItem("tenate_ruta_seleccionada");
