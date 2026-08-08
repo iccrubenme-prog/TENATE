@@ -397,6 +397,11 @@
             <button id="adm-btn-limpiar-registros" class="btn-limpiar-registros" style="display:none;" onclick="confirmarLimpiarRegistrosPedidos()">🗑️ Limpiar Estado / Pago / Ruta / Notas</button>
             <button id="adm-btn-resumen" class="btn-resumen-rutas" style="display:none;" onclick="mostrarResumenRutas()">📊 Resumen de Rutas</button>
             <button id="adm-btn-cierre" class="btn-cierre-dia" style="display:none;" onclick="mostrarCierreDia()">📋 Cierre de Día</button>
+
+            <div id="lista-ubicaciones-repartidores" style="display:none; background:#f8f9fa; border:1px solid #e0e0e0; border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+                <div style="font-size:13px; font-weight:bold; color:#34495e; margin-bottom:6px;">🚚 Repartidores en vivo</div>
+                <div id="lista-ubicaciones-repartidores-items" style="font-size:13px;"></div>
+            </div>
             
             <div class="control-rutas">
                 <label style="margin-top:0; color:#27ae60; font-size:13px; font-weight:bold; display:block;">📅 Filtrar por Día:</label>
@@ -736,8 +741,8 @@
                             urlOriginal: item.ubicacionText || "", 
                             entregado: item.entregado,
                             metodoPago: item.metodoPago, 
-                            telefono: item["Teléfono"] || "", 
-                            direccion: item["Dirección"] || "", 
+                            telefono: item["Telefono"] || item["Teléfono"] || "", 
+                            direccion: item["Direccion"] || item["Dirección"] || "", 
                             notas: item.notas || "",
                             rutaAsignadaBase: item.ruta || "",
                             quien: item.quien || "",
@@ -2587,6 +2592,46 @@ function crearIconoRepartidorEnVivo() {
         let posicionesGPSPorRutaAdmin = {}; // { idxRuta: {lat, lng} } — para que la línea del admin parta del mismo punto que ve el repartidor
         const ANTIGUEDAD_MAXIMA_UBICACION_MS = 45 * 60 * 1000; // 45 min: después de eso se considera inactivo
 
+        function crearIconoUbicacionEnVivo(idx, color) {
+            return L.divIcon({
+                className: 'svg-icon-marcador',
+                html: `<div style="width:26px;height:26px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:12px;font-family:'Segoe UI',sans-serif;">${idx + 1}</div>`,
+                iconSize: [26, 26],
+                iconAnchor: [13, 13],
+                popupAnchor: [0, -13]
+            });
+        }
+
+        // Cuando dos o más repartidores están muy cerca (o exactamente en el mismo
+        // punto, típico al hacer pruebas juntos), separa sus puntos en un pequeño
+        // abanico para que ninguno quede tapado por otro, sin perder su posición real
+        // de forma perceptible en el mapa.
+        function separarUbicacionesCercanas(entradas) {
+            const UMBRAL_COLISION_METROS = 20;
+            const yaColocadas = [];
+            entradas.forEach(entrada => {
+                const colisiones = yaColocadas.filter(p =>
+                    distanciaMetrosEntreCoords(entrada.lat, entrada.lng, p.latOriginal, p.lngOriginal) < UMBRAL_COLISION_METROS
+                ).length;
+
+                if (colisiones > 0) {
+                    const anguloRad = colisiones * 137.5 * (Math.PI / 180); // ángulo dorado: reparte bien aunque colisionen varios
+                    const radioMetros = 14 + colisiones * 8;
+                    const deltaLat = (radioMetros * Math.cos(anguloRad)) / 111320;
+                    const deltaLng = (radioMetros * Math.sin(anguloRad)) / (111320 * Math.cos(entrada.lat * Math.PI / 180));
+                    entrada.latOriginal = entrada.lat;
+                    entrada.lngOriginal = entrada.lng;
+                    entrada.lat += deltaLat;
+                    entrada.lng += deltaLng;
+                } else {
+                    entrada.latOriginal = entrada.lat;
+                    entrada.lngOriginal = entrada.lng;
+                }
+                yaColocadas.push(entrada);
+            });
+            return entradas;
+        }
+
         function consultarUbicacionesRepartidores() {
             if (ROL_ACTUAL !== "admin" || URL_GOOGLE_SCRIPT.trim() === "") return;
             fetch(URL_GOOGLE_SCRIPT + "?accion=ubicaciones")
@@ -2594,36 +2639,40 @@ function crearIconoRepartidorEnVivo() {
                 .then(ubicaciones => {
                     const idxVistos = new Set();
                     let huboUbicacionNuevaRelevante = false;
-                    Object.keys(ubicaciones).forEach(idxStr => {
+
+                    // Primero se recopilan todas las ubicaciones válidas y visibles, y se
+                    // separan las que colisionan entre sí, antes de dibujar nada.
+                    let entradasValidas = Object.keys(ubicaciones).map(idxStr => {
                         const idx = parseInt(idxStr);
                         const u = ubicaciones[idxStr];
-                        if (!u || u.lat === undefined || u.lng === undefined) return;
-                        if (Date.now() - (u.ts || 0) > ANTIGUEDAD_MAXIMA_UBICACION_MS) return; // repartidor inactivo, no mostrar
-                        if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== idx) return; // respeta el filtro de ruta activo
+                        if (!u || u.lat === undefined || u.lng === undefined) return null;
+                        if (Date.now() - (u.ts || 0) > ANTIGUEDAD_MAXIMA_UBICACION_MS) return null; // repartidor inactivo, no mostrar
+                        if (rutaActivaFiltrada !== "todas" && parseInt(rutaActivaFiltrada) !== idx) return null; // respeta el filtro de ruta activo
+                        return { idx, lat: u.lat, lng: u.lng };
+                    }).filter(Boolean);
 
+                    entradasValidas = separarUbicacionesCercanas(entradasValidas);
+
+                    entradasValidas.forEach(({ idx, lat, lng, latOriginal, lngOriginal }) => {
                         idxVistos.add(idx);
                         const color = obtenerColorRuta(idx);
                         const nombreRuta = `Ruta ${idx + 1}`;
 
-                        // Solo redibujamos si la posición cambió de forma real (no por el
-                        // ruido normal del GPS), para no generar peticiones OSRM de más y
-                        // no competir con el resto de redibujados en curso.
+                        // El cambio "real" se mide sobre la posición ORIGINAL (sin el
+                        // desplazamiento visual), para no disparar redibujados por el
+                        // ajuste del abanico en sí.
                         const posPrevia = posicionesGPSPorRutaAdmin[idx];
-                        const cambioReal = !posPrevia || distanciaMetrosEntreCoords(u.lat, u.lng, posPrevia.lat, posPrevia.lng) >= 30;
+                        const cambioReal = !posPrevia || distanciaMetrosEntreCoords(latOriginal, lngOriginal, posPrevia.lat, posPrevia.lng) >= 30;
 
-                        posicionesGPSPorRutaAdmin[idx] = { lat: u.lat, lng: u.lng };
+                        posicionesGPSPorRutaAdmin[idx] = { lat: latOriginal, lng: lngOriginal };
 
                         if (cambioReal && rutasOptimizadasActivas) huboUbicacionNuevaRelevante = true;
 
                         if (marcadoresUbicacionRepartidores[idx]) {
-                            marcadoresUbicacionRepartidores[idx].setLatLng([u.lat, u.lng]);
+                            marcadoresUbicacionRepartidores[idx].setLatLng([lat, lng]);
                         } else {
-                            marcadoresUbicacionRepartidores[idx] = L.circleMarker([u.lat, u.lng], {
-                                radius: 9,
-                                color: "#ffffff",
-                                weight: 2,
-                                fillColor: color,
-                                fillOpacity: 1
+                            marcadoresUbicacionRepartidores[idx] = L.marker([lat, lng], {
+                                icon: crearIconoUbicacionEnVivo(idx, color)
                             }).addTo(map).bindTooltip(`🚚 ${nombreRuta} — en vivo`, { permanent: false });
                         }
                     });
@@ -2637,6 +2686,32 @@ function crearIconoRepartidorEnVivo() {
                             delete posicionesGPSPorRutaAdmin[idx];
                         }
                     });
+
+                    // ── Lista de repartidores en vivo (además de los puntos en el mapa) ──
+                    const contenedorLista = document.getElementById("lista-ubicaciones-repartidores");
+                    const itemsLista = document.getElementById("lista-ubicaciones-repartidores-items");
+                    if (contenedorLista && itemsLista) {
+                        if (idxVistos.size === 0) {
+                            contenedorLista.style.display = "none";
+                            itemsLista.innerHTML = "";
+                        } else {
+                            contenedorLista.style.display = "block";
+                            const nombresPorRuta = construirMapaNombresPorRuta();
+                            const filas = [...idxVistos].sort((a, b) => a - b).map(idx => {
+                                const u = ubicaciones[idx];
+                                const color = obtenerColorRuta(idx);
+                                const nombre = nombresPorRuta[idx] ? ` (${nombresPorRuta[idx]})` : "";
+                                const segundos = Math.max(0, Math.round((Date.now() - (u.ts || 0)) / 1000));
+                                const textoHace = segundos < 60 ? `hace ${segundos}s` : `hace ${Math.round(segundos / 60)} min`;
+                                return `<div style="display:flex; align-items:center; gap:8px; padding:4px 0; border-bottom:1px solid #eee;">
+                                    <span style="width:12px; height:12px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
+                                    <span style="flex:1;">Ruta ${idx + 1}${nombre}</span>
+                                    <span style="color:#888; font-size:11px;">${textoHace}</span>
+                                </div>`;
+                            });
+                            itemsLista.innerHTML = filas.join('');
+                        }
+                    }
 
                     // Redibujar la línea de la ruta para que arranque desde la posición real
                     // del repartidor, igual que ve él — solo si algo cambió de verdad.
@@ -2655,6 +2730,8 @@ function crearIconoRepartidorEnVivo() {
             if (intervaloUbicacionesRepartidores) { clearInterval(intervaloUbicacionesRepartidores); intervaloUbicacionesRepartidores = null; }
             Object.values(marcadoresUbicacionRepartidores).forEach(capa => map.removeLayer(capa));
             marcadoresUbicacionRepartidores = {};
+            const contenedorLista = document.getElementById("lista-ubicaciones-repartidores");
+            if (contenedorLista) contenedorLista.style.display = "none";
         }
 
         function seleccionarRolSistema(rol) {
