@@ -17,7 +17,7 @@
         }
         .header { background: #2c3e50; color: white; padding: 15px; text-align: center; position: relative; }
         .content { padding: 15px; flex: 1; overflow-y: auto; }
-        #map-wrapper { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; }
+        #map-wrapper { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; position: relative; }
         #map { flex: 1; min-height: 0; }
 
         @media (max-width: 768px) {
@@ -439,7 +439,45 @@
 
     <div id="map-wrapper">
         <div id="leyenda-rutas-barra"></div>
+
+        <!-- Barra superior tipo navegación: próximo destino -->
+        <div id="nav-barra-superior" style="display:none; position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:1000; background:#fff; border-radius:16px; box-shadow:0 3px 12px rgba(0,0,0,0.3); padding:10px 16px; align-items:center; gap:10px; max-width:92%; width:420px;">
+            <div style="width:34px; height:34px; border-radius:50%; background:#8e44ad; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                <span style="color:#fff; font-size:16px;">🧭</span>
+            </div>
+            <div style="flex:1; min-width:0;">
+                <div id="nav-superior-nombre" style="font-weight:bold; font-size:14px; color:#2c3e50; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">—</div>
+                <div id="nav-superior-direccion" style="font-size:11px; color:#888; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">—</div>
+            </div>
+            <div id="nav-superior-eta-badge" style="background:#27ae60; color:#fff; font-weight:bold; font-size:13px; border-radius:12px; padding:4px 10px; flex-shrink:0;">—</div>
+        </div>
+
+        <!-- Botones circulares flotantes -->
+        <div id="nav-botones-circulares" style="display:none; flex-direction:column; gap:10px; position:absolute; right:12px; bottom:170px; z-index:1000;">
+            <button id="btn-centrar-circular" onclick="activarSeguimientoCamara()" title="Centrar en mi ubicación" style="width:44px; height:44px; border-radius:50%; background:#fff; border:none; box-shadow:0 2px 8px rgba(0,0,0,0.3); font-size:18px; cursor:pointer;">📍</button>
+            <button id="btn-ver-ruta-completa" onclick="verRutaCompleta()" title="Ver ruta completa" style="width:44px; height:44px; border-radius:50%; background:#fff; border:none; box-shadow:0 2px 8px rgba(0,0,0,0.3); font-size:18px; cursor:pointer;">🗺️</button>
+        </div>
+
         <div id="map"></div>
+
+        <!-- Barra inferior tipo navegación: distancia / tiempo / llegada + acción -->
+        <div id="nav-barra-inferior" style="display:none; position:absolute; bottom:0; left:0; right:0; z-index:1000; background:#fff; border-radius:16px 16px 0 0; box-shadow:0 -3px 12px rgba(0,0,0,0.25); padding:12px 16px; align-items:center; justify-content:space-between; gap:10px;">
+            <div style="display:flex; gap:18px;">
+                <div style="text-align:center;">
+                    <div id="nav-inferior-distancia" style="font-weight:bold; font-size:15px; color:#2c3e50;">—</div>
+                    <div style="font-size:10px; color:#999;">Distancia</div>
+                </div>
+                <div style="text-align:center;">
+                    <div id="nav-inferior-tiempo" style="font-weight:bold; font-size:15px; color:#2c3e50;">—</div>
+                    <div style="font-size:10px; color:#999;">Traslado</div>
+                </div>
+                <div style="text-align:center;">
+                    <div id="nav-inferior-llegada" style="font-weight:bold; font-size:15px; color:#2c3e50;">—</div>
+                    <div style="font-size:10px; color:#999;">Llegada</div>
+                </div>
+            </div>
+            <button id="nav-inferior-btn-accion" onclick="irAProximoClienteDesdeBarraNav()" style="width:46px; height:46px; border-radius:50%; background:#27ae60; border:none; box-shadow:0 2px 8px rgba(0,0,0,0.3); color:#fff; font-size:20px; cursor:pointer; flex-shrink:0;">📋</button>
+        </div>
     </div>
 
     <div id="payment-modal">
@@ -584,6 +622,19 @@
 
         const map = L.map('map', { fullscreenControl: true, fullscreenControlOptions: { position: 'topleft', title: 'Pantalla completa', titleCancel: 'Salir de pantalla completa' } }).setView([deposito.lat, deposito.lng], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+
+        // Si el repartidor mueve o hace zoom al mapa a mano, se pausa el seguimiento
+        // automático de cámara (para no arrebatarle la vista mientras revisa algo). El
+        // botón circular 📍 se resalta para invitar a retomarlo. Se ignora si el
+        // movimiento lo generó el propio seguimiento (map.setView programático), no el usuario.
+        let _cambioMapaProgramatico = false;
+        map.on('dragstart zoomstart', () => {
+            if (_cambioMapaProgramatico) return;
+            if (ROL_ACTUAL === "repartidor" && seguimientoCamaraActivo) {
+                seguimientoCamaraActivo = false;
+                marcarBotonCentrarComoPausado(true);
+            }
+        });
 
 
 
@@ -1494,8 +1545,13 @@ if (punto.notas && punto.notas.trim() !== "") {
         contenedorListasHtml.appendChild(ul);
     });
 
-    if (coordenadasParaEncuadre.length > 1) {
+    // Para el repartidor, solo se encuadra TODA la ruta automáticamente la primera vez
+    // que carga — después, el zoom lo controla él (con "Centrar" o "Ver ruta completa"),
+    // para que un refresco automático no le arrebate la vista que ya tenía.
+    const debeEncuadrarAutomaticamente = ROL_ACTUAL !== "repartidor" || !primerEncuadreRepartidorHecho;
+    if (coordenadasParaEncuadre.length > 1 && debeEncuadrarAutomaticamente) {
         map.fitBounds(coordenadasParaEncuadre, { padding: [40, 40] });
+        if (ROL_ACTUAL === "repartidor") primerEncuadreRepartidorHecho = true;
     }
 
     // ── Clientes sin ruta asignada ────────────────────────────────────────────
@@ -1565,6 +1621,7 @@ if (punto.notas && punto.notas.trim() !== "") {
     }
 
     actualizarLeyendaRutasMapa();
+    actualizarBarraNavegacionRepartidor();
 }
 
 
@@ -1672,16 +1729,47 @@ function crearIconoRepartidorEnVivo() {
                 cl.metodoPago = m;
 
                 // Mover el cliente al final de su ruta para que el repartidor
-                // siempre vea primero los pendientes sin modificar ninguna otra función
+                // siempre vea primero los pendientes sin modificar ninguna otra función.
+                //
+                // Orden esperado entre entregados: el PRIMERO en entregarse debe terminar
+                // en la ÚLTIMA posición (número más alto, junto al depósito de cierre), el
+                // SEGUNDO en la penúltima, y así sucesivamente — cada nueva entrega se
+                // acomoda justo antes de las que ya se habían entregado, no después.
                 rutasEstructuradas.forEach(ruta => {
                     const idx = ruta.findIndex(p => p.id === cl.id);
                     if (idx === -1) return;
                     ruta.splice(idx, 1);
-                    const idxCierre = ruta.length - 1;
-                    if (idxCierre >= 0 && ruta[idxCierre].id === 0) {
-                        ruta.splice(idxCierre, 0, cl);
+
+                    const idxPrimerEntregado = ruta.findIndex((p, i) => i > 0 && p.id !== 0 && p.entregado);
+                    if (idxPrimerEntregado === -1) {
+                        // Nadie entregado todavía en esta ruta: va justo antes del depósito de cierre
+                        const idxCierre = ruta.length - 1;
+                        if (idxCierre >= 0 && ruta[idxCierre].id === 0) {
+                            ruta.splice(idxCierre, 0, cl);
+                        } else {
+                            ruta.push(cl);
+                        }
                     } else {
-                        ruta.push(cl);
+                        ruta.splice(idxPrimerEntregado, 0, cl);
+                    }
+
+                    // Renumerar #Cte según la nueva posición y guardarlo en Sheets, para que
+                    // el número del pin siempre refleje el orden real (pendientes primero,
+                    // entregados después en orden inverso de entrega).
+                    const idxRutaActual = rutasEstructuradas.indexOf(ruta);
+                    let orden = 0;
+                    let asignaciones = [];
+                    ruta.forEach(p => {
+                        if (p.id === 0) return;
+                        orden++;
+                        p.cte = orden;
+                        asignaciones.push({ id: p.id, nombre: p.nombre, ruta: `Ruta ${idxRutaActual + 1}`, cte: p.cte });
+                    });
+                    if (asignaciones.length > 0) {
+                        fetch(URL_GOOGLE_SCRIPT, {
+                            method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ accion: "guardar_rutas_masivo", asignaciones })
+                        }).catch(() => {});
                     }
                 });
 
@@ -2127,7 +2215,13 @@ function crearIconoRepartidorEnVivo() {
         function iniciarSeguimientoGPSEnVivo() {
             if (ROL_ACTUAL !== "repartidor" || !navigator.geolocation || watchIdGPSVivo !== null) return;
             watchIdGPSVivo = navigator.geolocation.watchPosition(
-                position => manejarNuevaPosicionGPSVivo(position.coords.latitude, position.coords.longitude),
+                position => {
+                    // Seguimiento del mapa: ligero, corre en CADA actualización de GPS
+                    // (no cada 150m/60s), sin tocar rutas ni Sheets.
+                    seguirCamaraConGPS(position.coords.latitude, position.coords.longitude);
+                    // El reordenamiento sigue exactamente igual que antes, sin cambios.
+                    manejarNuevaPosicionGPSVivo(position.coords.latitude, position.coords.longitude);
+                },
                 err => console.warn("Seguimiento GPS en vivo no disponible:", err.message),
                 { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
             );
@@ -2148,6 +2242,150 @@ function crearIconoRepartidorEnVivo() {
             ultimaPosicionRecalculada = { lat, lng };
             ultimoRecalculoAutoTimestamp = ahora;
             reoptimizarYRecalcularDesdeGPS(lat, lng);
+        }
+
+        // ── Cámara del mapa tipo Google Maps para el repartidor ───────────────────
+        // Centra el mapa en la posición del repartidor y ajusta el zoom según qué tan
+        // cerca esté de su próximo cliente pendiente — más cerca, más zoom, como en una
+        // app de navegación. Se pausa sola si el repartidor mueve el mapa a mano, y se
+        // reactiva con el botón circular 📍. Esto es puramente visual: no reordena
+        // clientes ni toca el #Cte (eso sigue dependiendo solo de manejarNuevaPosicionGPSVivo).
+        let seguimientoCamaraActivo = true;
+        let primerEncuadreRepartidorHecho = false;
+
+        function calcularZoomSegunDistancia(metros) {
+            if (metros < 150) return 18;
+            if (metros < 400) return 17;
+            if (metros < 1000) return 16;
+            if (metros < 3000) return 15;
+            if (metros < 8000) return 14;
+            return 13;
+        }
+
+        function seguirCamaraConGPS(lat, lng) {
+            if (ROL_ACTUAL !== "repartidor" || !seguimientoCamaraActivo) return;
+            const idxRuta = parseInt(rutaActivaFiltrada);
+            if (isNaN(idxRuta) || !rutasEstructuradas[idxRuta]) return;
+
+            const pendientes = rutasEstructuradas[idxRuta].filter(p =>
+                p.id !== 0 && p.lat !== null && p.lng !== null && !p.entregado &&
+                (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+            );
+
+            let distanciaMasCercana = 2000; // valor por defecto si no hay pendientes cerca
+            pendientes.forEach(p => {
+                const d = distanciaMetrosEntreCoords(lat, lng, p.lat, p.lng);
+                if (d < distanciaMasCercana) distanciaMasCercana = d;
+            });
+
+            const zoom = calcularZoomSegunDistancia(distanciaMasCercana);
+            _cambioMapaProgramatico = true;
+            map.setView([lat, lng], zoom, { animate: true });
+            setTimeout(() => { _cambioMapaProgramatico = false; }, 400); // tras la animación de setView
+
+            actualizarBarraNavegacionRepartidor();
+        }
+
+        function marcarBotonCentrarComoPausado(pausado) {
+            const btn = document.getElementById("btn-centrar-circular");
+            if (!btn) return;
+            btn.style.background = pausado ? "#8e44ad" : "#fff";
+            btn.style.color = pausado ? "#fff" : "#000";
+        }
+
+        function activarSeguimientoCamara() {
+            seguimientoCamaraActivo = true;
+            marcarBotonCentrarComoPausado(false);
+            if (marcadorMiGpsActual) {
+                const ll = marcadorMiGpsActual.getLatLng();
+                seguirCamaraConGPS(ll.lat, ll.lng);
+            }
+        }
+
+        // Muestra toda la ruta de un vistazo, a petición del repartidor (botón 🗺️).
+        // Pausa el seguimiento automático para que un refresco no vuelva a acercar el
+        // zoom mientras está viendo el panorama completo.
+        function verRutaCompleta() {
+            if (ROL_ACTUAL !== "repartidor") return;
+            seguimientoCamaraActivo = false;
+            marcarBotonCentrarComoPausado(true);
+
+            const idxRuta = parseInt(rutaActivaFiltrada);
+            let coords = [[deposito.lat, deposito.lng]];
+            if (!isNaN(idxRuta) && rutasEstructuradas[idxRuta]) {
+                rutasEstructuradas[idxRuta].forEach(p => {
+                    if (p.id !== 0 && p.lat !== null && p.lng !== null &&
+                        (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)) {
+                        coords.push([p.lat, p.lng]);
+                    }
+                });
+            }
+            if (marcadorMiGpsActual) {
+                const ll = marcadorMiGpsActual.getLatLng();
+                coords.push([ll.lat, ll.lng]);
+            }
+
+            _cambioMapaProgramatico = true;
+            if (coords.length > 1) map.fitBounds(coords, { padding: [40, 40] });
+            setTimeout(() => { _cambioMapaProgramatico = false; }, 500);
+        }
+
+        // ── Barras de navegación tipo Maps (repartidor) ───────────────────────────
+        function obtenerProximoClientePendiente() {
+            if (ROL_ACTUAL !== "repartidor") return null;
+            const idxRuta = parseInt(rutaActivaFiltrada);
+            if (isNaN(idxRuta) || !rutasEstructuradas[idxRuta]) return null;
+            const pendientes = rutasEstructuradas[idxRuta].filter(p =>
+                p.id !== 0 && !p.entregado && (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+            );
+            if (pendientes.length === 0) return null;
+            pendientes.sort((a, b) => (a.cte ?? 999) - (b.cte ?? 999));
+            return pendientes[0];
+        }
+
+        function actualizarBarraNavegacionRepartidor() {
+            if (ROL_ACTUAL !== "repartidor") return;
+            const nombreEl = document.getElementById("nav-superior-nombre");
+            const dirEl = document.getElementById("nav-superior-direccion");
+            const etaBadge = document.getElementById("nav-superior-eta-badge");
+            const distEl = document.getElementById("nav-inferior-distancia");
+            const tiempoEl = document.getElementById("nav-inferior-tiempo");
+            const llegadaEl = document.getElementById("nav-inferior-llegada");
+            if (!nombreEl) return;
+
+            const cliente = obtenerProximoClientePendiente();
+            if (!cliente) {
+                nombreEl.textContent = "🎉 Sin clientes pendientes";
+                dirEl.textContent = "Ruta completada";
+                etaBadge.textContent = "—";
+                distEl.textContent = "—";
+                tiempoEl.textContent = "—";
+                llegadaEl.textContent = "—";
+                return;
+            }
+
+            nombreEl.textContent = cliente.nombre || "Cliente";
+            dirEl.textContent = cliente.direccion || "";
+            const eta = llegadasEstimadasPorCliente[cliente.id];
+            etaBadge.textContent = eta || "—";
+            llegadaEl.textContent = eta || "—";
+
+            const minsTrayecto = trayectosMinutosPorCliente[cliente.id];
+            tiempoEl.textContent = (minsTrayecto !== undefined) ? `${minsTrayecto} min` : "—";
+
+            if (marcadorMiGpsActual && cliente.lat !== null && cliente.lng !== null) {
+                const ll = marcadorMiGpsActual.getLatLng();
+                const metros = distanciaMetrosEntreCoords(ll.lat, ll.lng, cliente.lat, cliente.lng);
+                distEl.textContent = metros >= 1000 ? `${(metros / 1000).toFixed(1)} km` : `${Math.round(metros)} m`;
+            } else {
+                distEl.textContent = "—";
+            }
+        }
+
+        function irAProximoClienteDesdeBarraNav() {
+            const cliente = obtenerProximoClientePendiente();
+            if (!cliente) { alert("🎉 No tienes clientes pendientes en esta ruta."); return; }
+            abrirModalPago(cliente.id);
         }
 
         function calcularMultiRutasEquitativas() {
@@ -2737,9 +2975,18 @@ function crearIconoRepartidorEnVivo() {
         function seleccionarRolSistema(rol) {
             ROL_ACTUAL = rol;
             ultimaPosicionGPSVivo = null; // evita reusar una posición vieja de una sesión/ruta anterior
+            seguimientoCamaraActivo = true;
+            primerEncuadreRepartidorHecho = false;
+            marcarBotonCentrarComoPausado(false);
             document.getElementById("role-gate-modal").style.display = "none";
             document.body.classList.remove("vista-admin", "vista-repartidor");
             document.body.classList.add(rol === "admin" ? "vista-admin" : "vista-repartidor");
+
+            // Barras de navegación tipo Maps: solo para el repartidor
+            const mostrarBarrasNav = rol === "repartidor";
+            document.getElementById("nav-barra-superior").style.display = mostrarBarrasNav ? "flex" : "none";
+            document.getElementById("nav-botones-circulares").style.display = mostrarBarrasNav ? "flex" : "none";
+            document.getElementById("nav-barra-inferior").style.display = mostrarBarrasNav ? "flex" : "none";
             
             const subtitulo = document.getElementById("subtitulo-rol-actual");
             const btnSync = document.getElementById("adm-btn-sync");
