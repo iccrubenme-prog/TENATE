@@ -18,6 +18,10 @@
         .header { background: #2c3e50; color: white; padding: 15px; text-align: center; position: relative; }
         .content { padding: 15px; flex: 1; overflow-y: auto; }
         #map-wrapper { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; position: relative; }
+        #map-wrapper:fullscreen, #map-wrapper:-webkit-full-screen {
+            width: 100vw; height: 100vh; background: #fff;
+        }
+        #map-wrapper:fullscreen #map, #map-wrapper:-webkit-full-screen #map { flex: 1; }
         #map { flex: 1; min-height: 0; }
 
         @media (max-width: 768px) {
@@ -620,8 +624,53 @@
             return color;
         }
 
-        const map = L.map('map', { fullscreenControl: true, fullscreenControlOptions: { position: 'topleft', title: 'Pantalla completa', titleCancel: 'Salir de pantalla completa' } }).setView([deposito.lat, deposito.lng], 14);
+        const map = L.map('map', { fullscreenControl: false }).setView([deposito.lat, deposito.lng], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+
+        // Control de pantalla completa propio (no el del plugin): el plugin solo agranda
+        // el div del mapa, dejando fuera las barras de navegación (elementos hermanos).
+        // Este usa la API nativa del navegador directamente sobre #map-wrapper, que sí
+        // incluye todo — mapa + barras.
+        const ControlPantallaCompletaPropio = L.Control.extend({
+            options: { position: 'topleft' },
+            onAdd: function () {
+                const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+                const btn = L.DomUtil.create('a', '', div);
+                btn.href = '#';
+                btn.title = 'Pantalla completa';
+                btn.innerHTML = '⛶';
+                btn.style.fontSize = '18px';
+                btn.style.fontWeight = 'bold';
+                L.DomEvent.on(btn, 'click', L.DomEvent.stop).on(btn, 'click', () => {
+                    alternarPantallaCompletaMapa(btn);
+                });
+                return div;
+            }
+        });
+        map.addControl(new ControlPantallaCompletaPropio());
+
+        function alternarPantallaCompletaMapa(btn) {
+            const wrapper = document.getElementById('map-wrapper');
+            const yaEnFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+            const solicitar = wrapper.requestFullscreen || wrapper.webkitRequestFullscreen;
+            const salir = document.exitFullscreen || document.webkitExitFullscreen;
+
+            if (!yaEnFullscreen) {
+                if (solicitar) solicitar.call(wrapper).catch(() => {});
+            } else {
+                if (salir) salir.call(document).catch(() => {});
+            }
+        }
+
+        // Leaflet necesita recalcular su tamaño al entrar/salir de pantalla completa,
+        // si no, el mapa se queda con las dimensiones viejas y se ve cortado/mal.
+        function alRecalcularFullscreen() {
+            setTimeout(() => map.invalidateSize(), 150);
+            const btn = document.querySelector('.leaflet-control-container a[title="Pantalla completa"]');
+            if (btn) btn.innerHTML = (document.fullscreenElement || document.webkitFullscreenElement) ? '✕' : '⛶';
+        }
+        document.addEventListener('fullscreenchange', alRecalcularFullscreen);
+        document.addEventListener('webkitfullscreenchange', alRecalcularFullscreen);
 
         // Si el repartidor mueve o hace zoom al mapa a mano, se pausa el seguimiento
         // automático de cámara (para no arrebatarle la vista mientras revisa algo). El
