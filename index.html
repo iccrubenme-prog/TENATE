@@ -482,23 +482,26 @@
             </div>
             <button id="nav-inferior-btn-accion" onclick="irAProximoClienteDesdeBarraNav()" style="width:46px; height:46px; border-radius:50%; background:#27ae60; border:none; box-shadow:0 2px 8px rgba(0,0,0,0.3); color:#fff; font-size:20px; cursor:pointer; flex-shrink:0;">📋</button>
         </div>
-    </div>
 
-    <div id="payment-modal">
-        <div class="modal-content">
-            <h3 style="margin-top:0;" id="modal-cliente-name">Registrar Entrega</h3>
-            <p id="modal-cliente-monto"></p>
-            <label for="select-pago">Selecciona el Método de Pago:</label>
-            <select id="select-pago">
-                <option id="option-placeholder-pago" value="" disabled selected hidden>Elige la forma de pago</option>
-                <option value="Efectivo">💵 Efectivo</option>
-                <option value="Tarjeta">💳 Tarjeta</option>
-                <option value="Transferencia">📲 Transferencia</option>
-                <option value="Pagado">✓ Pagado (Anticipado)</option>
-                <option value="No pagado">❌ No pagado</option>
-            </select>
-            <button id="btn-confirmar-modal-pago" class="modal-btn" onclick="confirmarEntregaConPago()">Confirmar Entrega</button>
-            <button class="modal-btn modal-btn-cancel" onclick="cerrarModalPago()">Cancelar</button>
+        <!-- Modales que deben verse también en pantalla completa: se colocan dentro de
+             #map-wrapper (el elemento que realmente se pone en pantalla completa) en vez
+             de quedar como hermanos afuera, donde el navegador los ocultaría. -->
+        <div id="payment-modal">
+            <div class="modal-content">
+                <h3 style="margin-top:0;" id="modal-cliente-name">Registrar Entrega</h3>
+                <p id="modal-cliente-monto"></p>
+                <label for="select-pago">Selecciona el Método de Pago:</label>
+                <select id="select-pago">
+                    <option id="option-placeholder-pago" value="" disabled selected hidden>Elige la forma de pago</option>
+                    <option value="Efectivo">💵 Efectivo</option>
+                    <option value="Tarjeta">💳 Tarjeta</option>
+                    <option value="Transferencia">📲 Transferencia</option>
+                    <option value="Pagado">✓ Pagado (Anticipado)</option>
+                    <option value="No pagado">❌ No pagado</option>
+                </select>
+                <button id="btn-confirmar-modal-pago" class="modal-btn" onclick="confirmarEntregaConPago()">Confirmar Entrega</button>
+                <button class="modal-btn modal-btn-cancel" onclick="cerrarModalPago()">Cancelar</button>
+            </div>
         </div>
     </div>
 
