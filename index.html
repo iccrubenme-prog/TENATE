@@ -1638,7 +1638,25 @@ if (punto.notas && punto.notas.trim() !== "") {
                     const marcador = L.marker([c.lat, c.lng], {
                         icon: crearIconoSvgConNumero(COLOR_SIN_RUTA, numeroPinSR)
                     }).addTo(map);
-                    marcador.bindPopup(`<b>${c.nombre}</b>${c.pedido ? ` [${c.pedido}]` : ''}<br><span style="color:#95a5a6;font-size:11px;">Sin ruta asignada</span><br>${c.dia ? `📅 ${c.dia}` : ''}`);
+
+                    // Selector para asignar directamente a una ruta desde el propio pin,
+                    // igual que ya existe para clientes que sí tienen ruta.
+                    let opcionesRutaHtmlSR = '<option value="" disabled selected>Asignar a ruta…</option>';
+                    for (let r = 1; r <= cantRutasTotales; r++) {
+                        opcionesRutaHtmlSR += `<option value="Ruta ${r}">Ruta ${r}</option>`;
+                    }
+
+                    marcador.bindPopup(`
+                        <b>${c.nombre}</b>${c.pedido ? ` [${c.pedido}]` : ''}<br>
+                        <span style="color:#95a5a6;font-size:11px;">Sin ruta asignada</span><br>
+                        ${c.dia ? `📅 ${c.dia}` : ''}
+                        <div class="popup-info-row-diseño" style="margin-top:6px; border-top:1px dashed #ccc; padding-top:4px; flex-direction:column; align-items:stretch;">
+                            <strong>Asignar a Ruta:</strong>
+                            <select class="popup-select-ruta" onchange="cambiarRutaClienteDesdeMapa(${c.id}, this.value)">
+                                ${opcionesRutaHtmlSR}
+                            </select>
+                        </div>
+                    `);
                     marcadoresMapeados[`sinruta_${c.id}`] = marcador;
                     coordenadasParaEncuadre.push([c.lat, c.lng]);
                 }
@@ -1646,6 +1664,11 @@ if (punto.notas && punto.notas.trim() !== "") {
                 // Ficha en lista
                 let htmlNotasSR = c.notas && c.notas.toString().trim() !== ""
                     ? `<span class="notas-cliente">📝 ${c.notas}</span>` : "";
+
+                let opcionesRutaHtmlSRLista = '<option value="" disabled selected>Asignar a ruta…</option>';
+                for (let r = 1; r <= cantRutasTotales; r++) {
+                    opcionesRutaHtmlSRLista += `<option value="Ruta ${r}">Ruta ${r}</option>`;
+                }
 
                 const li = document.createElement('li');
                 li.className = `route-item ${c.lat === null ? 'error-coord' : ''}`;
@@ -1663,6 +1686,12 @@ if (punto.notas && punto.notas.trim() !== "") {
                         ${c.lat !== null ? `<a href="${obtenerEnlaceMaps(c.lat, c.lng)}" target="_blank" class="btn-navegar">GPS</a>` : ''}
                         <a href="${c.urlOriginal && c.urlOriginal.startsWith('http') ? c.urlOriginal : 'javascript:void(0);'}" target="_blank" onclick="event.stopPropagation();" class="btn-link-cel">🔗 Abrir Link Cel</a>
                         <button class="btn-manual" onclick="event.stopPropagation(); asignarYEnviarCoordenadaManual(${c.id})">🔧 Ubicar</button>
+                    </div>
+                    <div class="popup-info-row-diseño" style="margin-top:6px; border-top:1px dashed #ccc; padding-top:4px; flex-direction:column; align-items:stretch;" onclick="event.stopPropagation();">
+                        <strong>Asignar a Ruta:</strong>
+                        <select class="popup-select-ruta" onchange="cambiarRutaClienteDesdeMapa(${c.id}, this.value)">
+                            ${opcionesRutaHtmlSRLista}
+                        </select>
                     </div>
                 `;
                 ulSinRuta.appendChild(li);
@@ -3231,7 +3260,11 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
 
             // Obtener tipos únicos de pedido (Familiar, Individual, Personalizado, etc.)
             const tiposPedido = [...new Set(clientes.map(c => (c.pedido || "Sin tipo").trim()))].filter(Boolean).sort();
-            const metodos = ["Efectivo","Tarjeta","Transferencia","Pagado (Anticipado)","No pagado"];
+            const metodos = ["Efectivo","Tarjeta","Transferencia","Pagado","No pagado"];
+            // El <option value="Pagado"> del modal de entrega guarda literalmente "Pagado"
+            // (no "Pagado (Anticipado)"), así que la comparación debe ser contra ese valor
+            // real. Esta etiqueta es solo para que la tabla se siga viendo igual de clara.
+            const etiquetasMetodo = { "Pagado": "Pagado (Anticipado)" };
 
             // ── Construir datos ──────────────────────────────────────────────────────
             // Tabla 1: Paquetes × Método Pago (cantidad)
@@ -3240,6 +3273,20 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
             // Tabla 4: Ingreso Paquetes × Día ($)
 
             const diasUnicos = [...new Set(clientesFiltrados.map(c => (c.dia || "Sin día").trim()))].sort();
+
+            // Conteo de Paquetes por Día debe mostrar TODOS los paquetes de ese día (entregados
+            // y pendientes), no solo los ya entregados — así el admin ve el total real desde
+            // temprano, sin esperar a que se vayan entregando. Se aplican los mismos filtros
+            // de día/ruta que clientesFiltrados, pero sin exigir que ya estén entregados.
+            let clientesTodosDelDia = clientes.filter(c => diaActivoFiltrado === "todos" || c.dia === diaActivoFiltrado);
+            if (rutaActivaFiltrada !== "todas") {
+                const idxRuta = parseInt(rutaActivaFiltrada);
+                if (!isNaN(idxRuta) && rutasEstructuradas[idxRuta]) {
+                    const idsEnRuta = new Set(rutasEstructuradas[idxRuta].filter(p => p.id !== 0).map(p => p.id));
+                    clientesTodosDelDia = clientesTodosDelDia.filter(c => idsEnRuta.has(c.id));
+                }
+            }
+            const diasUnicosTodos = [...new Set(clientesTodosDelDia.map(c => (c.dia || "Sin día").trim()))].sort();
 
             function buildMatriz(filas, columnas, keyFila, keyCol, clientes) {
                 const m = {};
@@ -3255,9 +3302,10 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
 
             const matrizMetodo = buildMatriz(tiposPedido, metodos, "pedido", "metodoPago", clientesFiltrados);
             const matrizDia    = buildMatriz(tiposPedido, diasUnicos, "pedido", "dia", clientesFiltrados);
+            const matrizDiaTodos = buildMatriz(tiposPedido, diasUnicosTodos, "pedido", "dia", clientesTodosDelDia);
 
             function renderTabla(titulo, filas, columnas, matrizData, valorFn, prefijo) {
-                const colsTh = columnas.map(c => `<th>${c}</th>`).join("") + "<th>Total</th>";
+                const colsTh = columnas.map(c => `<th>${etiquetasMetodo[c] || c}</th>`).join("") + "<th>Total</th>";
                 let rows = filas.map(fila => {
                     const celdas = columnas.map(col => {
                         const v = valorFn(matrizData[fila]?.[col] || []);
@@ -3296,7 +3344,7 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
 
             let html = `<div class="cierre-dos-columnas">`;
             html += renderTabla("Conteo de Paquetes por Método de Pago", tiposPedido, metodos, matrizMetodo, fmtN, "");
-            html += renderTabla("Conteo de Paquetes por Día", tiposPedido, diasUnicos, matrizDia, fmtN, "");
+            html += renderTabla("Conteo de Paquetes por Día (incluye pendientes)", tiposPedido, diasUnicosTodos, matrizDiaTodos, fmtN, "");
             html += `</div>`;
             html += `<div style="margin:8px 0 20px; font-size:13px; font-weight:700; color:#1a3c5e;">Ingreso</div>`;
             html += `<div class="cierre-dos-columnas">`;
@@ -3373,7 +3421,7 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
             html += `<td style="width:50%;vertical-align:top;padding-right:12px;">`;
             html += buildTablaHTML("Conteo de Paquetes por Método de Pago", tiposPedido, metodos, matrizMetodo, fmtN);
             html += `</td><td style="width:50%;vertical-align:top;padding-left:12px;">`;
-            html += buildTablaHTML("Conteo de Paquetes por Día", tiposPedido, diasUnicos, matrizDia, fmtN);
+            html += buildTablaHTML("Conteo de Paquetes por Día (incluye pendientes)", tiposPedido, diasUnicosTodos, matrizDiaTodos, fmtN);
             html += `</td></tr></table>`;
 
             html += `<p style="font-weight:700;color:${verde};font-size:14px;margin:8px 0 14px;">Ingreso</p>`;
