@@ -2131,6 +2131,17 @@ function crearIconoRepartidorEnVivo() {
         // posición en vez de El Tenate. Sin confirm()/alert(): la usan tanto el botón
         // manual (que sí pide confirmación) como el seguimiento automático (silencioso).
         // Devuelve true si reoptimizó algo, false si no había nada pendiente.
+        // Envía la ubicación del repartidor al backend, independiente de cualquier otra
+        // lógica (reordenamiento, etc.) — así el admin siempre la recibe aunque en ese
+        // momento no haya nada que reoptimizar.
+        function enviarUbicacionAlBackend(lat, lng, idxRuta) {
+            if (URL_GOOGLE_SCRIPT.trim() === "") return;
+            fetch(URL_GOOGLE_SCRIPT, {
+                method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ accion: "guardar_ubicacion_repartidor", idxRuta: idxRuta, lat: lat, lng: lng })
+            }).catch(() => {});
+        }
+
         function reoptimizarYRecalcularDesdeGPS(latVivo, lngVivo) {
             if (ROL_ACTUAL !== "repartidor") return false;
             const idxRuta = parseInt(rutaActivaFiltrada);
@@ -2141,6 +2152,12 @@ function crearIconoRepartidorEnVivo() {
 
             if (marcadorMiGpsActual) map.removeLayer(marcadorMiGpsActual);
             marcadorMiGpsActual = L.marker([latVivo, lngVivo], { icon: crearIconoRepartidorEnVivo() }).addTo(map);
+
+            // La ubicación para el admin se manda SIEMPRE que tengamos GPS, sin importar
+            // si hay pendientes que reordenar — antes estaba después del "return false"
+            // de abajo, así que si no había pendientes en ese momento, el admin se quedaba
+            // sin ver el punto por completo.
+            enviarUbicacionAlBackend(latVivo, lngVivo, idxRuta);
 
             // Solo reoptimizamos los clientes del día activo (si hay filtro de día).
             // Los clientes de otros días en la misma ruta NO se tocan ni renumeran.
@@ -2184,12 +2201,6 @@ function crearIconoRepartidorEnVivo() {
             fetch(URL_GOOGLE_SCRIPT, {
                 method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ accion: "guardar_rutas_masivo", asignaciones: asignacionesCte })
-            }).catch(() => {});
-
-            // Enviar la ubicación en vivo, para que el admin la vea en su mapa
-            fetch(URL_GOOGLE_SCRIPT, {
-                method: "POST", mode: "no-cors", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ accion: "guardar_ubicacion_repartidor", idxRuta: idxRuta, lat: latVivo, lng: lngVivo })
             }).catch(() => {});
 
             refrescarMapaYListasVisuales();
@@ -2295,6 +2306,18 @@ function crearIconoRepartidorEnVivo() {
 
         function iniciarSeguimientoGPSEnVivo() {
             if (ROL_ACTUAL !== "repartidor" || !navigator.geolocation || watchIdGPSVivo !== null) return;
+
+            // Envío inmediato al arrancar, para que el admin vea el punto de una vez, sin
+            // esperar al primer disparo natural de watchPosition.
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const idxRuta = parseInt(rutaActivaFiltrada);
+                    if (!isNaN(idxRuta)) enviarUbicacionAlBackend(position.coords.latitude, position.coords.longitude, idxRuta);
+                    seguirCamaraConGPS(position.coords.latitude, position.coords.longitude);
+                },
+                () => {}, { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+            );
+
             watchIdGPSVivo = navigator.geolocation.watchPosition(
                 position => {
                     // Seguimiento del mapa: ligero, corre en CADA actualización de GPS
