@@ -2344,7 +2344,20 @@ function crearIconoRepartidorEnVivo() {
         }
 
         function seguirCamaraConGPS(lat, lng) {
-            if (ROL_ACTUAL !== "repartidor" || !seguimientoCamaraActivo) return;
+            if (ROL_ACTUAL !== "repartidor") return;
+
+            // El ícono del repartidor se mueve en CADA actualización de GPS (no cada
+            // 150m/1min como el resto), para que se sienta en tiempo real igual que el
+            // mapa. Esto es solo visual — no toca rutas, cte ni Sheets — y se actualiza
+            // aunque el seguimiento de cámara esté pausado (el punto debe reflejar la
+            // posición real sin importar si el mapa lo está siguiendo o no).
+            if (marcadorMiGpsActual) {
+                marcadorMiGpsActual.setLatLng([lat, lng]);
+            } else {
+                marcadorMiGpsActual = L.marker([lat, lng], { icon: crearIconoRepartidorEnVivo() }).addTo(map);
+            }
+
+            if (!seguimientoCamaraActivo) return;
             const idxRuta = parseInt(rutaActivaFiltrada);
             if (isNaN(idxRuta) || !rutasEstructuradas[idxRuta]) return;
 
