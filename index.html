@@ -1597,15 +1597,6 @@ if (punto.notas && punto.notas.trim() !== "") {
         contenedorListasHtml.appendChild(ul);
     });
 
-    // Para el repartidor, solo se encuadra TODA la ruta automáticamente la primera vez
-    // que carga — después, el zoom lo controla él (con "Centrar" o "Ver ruta completa"),
-    // para que un refresco automático no le arrebate la vista que ya tenía.
-    const debeEncuadrarAutomaticamente = ROL_ACTUAL !== "repartidor" || !primerEncuadreRepartidorHecho;
-    if (coordenadasParaEncuadre.length > 1 && debeEncuadrarAutomaticamente) {
-        map.fitBounds(coordenadasParaEncuadre, { padding: [40, 40] });
-        if (ROL_ACTUAL === "repartidor") primerEncuadreRepartidorHecho = true;
-    }
-
     // ── Clientes sin ruta asignada ────────────────────────────────────────────
     // Se muestran en el mapa y en la lista con el mismo diseño de ficha,
     // en color gris, con su propia numeración, pero sin afectar rutas.
@@ -1616,7 +1607,7 @@ if (punto.notas && punto.notas.trim() !== "") {
 
         const sinRuta = clientes.filter(c =>
             !idsEnRutas.has(c.id) &&
-            (diaActivoFiltrado === "todos" || c.dia === diaActivoFiltrado) &&
+            (diaActivoFiltrado === "todos" || c.dia === diaActivoFiltrado || !c.dia || c.dia.toString().trim() === "") &&
             (clientesSeleccionadosFiltro.length === 0 || clientesSeleccionadosFiltro.includes(c.id.toString()))
         );
 
@@ -1699,6 +1690,17 @@ if (punto.notas && punto.notas.trim() !== "") {
 
             contenedorListasHtml.appendChild(ulSinRuta);
         }
+    }
+
+    // Para el repartidor, solo se encuadra TODA la ruta automáticamente la primera vez
+    // que carga — después, el zoom lo controla él (con "Centrar" o "Ver ruta completa"),
+    // para que un refresco automático no le arrebate la vista que ya tenía.
+    // Este encuadre va DESPUÉS de procesar los clientes sin ruta para que sus coordenadas
+    // también se incluyan — si no, sus pines podían quedar fuera del área visible.
+    const debeEncuadrarAutomaticamente = ROL_ACTUAL !== "repartidor" || !primerEncuadreRepartidorHecho;
+    if (coordenadasParaEncuadre.length > 1 && debeEncuadrarAutomaticamente) {
+        map.fitBounds(coordenadasParaEncuadre, { padding: [40, 40] });
+        if (ROL_ACTUAL === "repartidor") primerEncuadreRepartidorHecho = true;
     }
 
     actualizarLeyendaRutasMapa();
