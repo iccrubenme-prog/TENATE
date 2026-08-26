@@ -2422,13 +2422,23 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             }
 
             if (!seguimientoCamaraActivo) return;
+            const idxRuta = parseInt(rutaActivaFiltrada);
+            if (isNaN(idxRuta) || !rutasEstructuradas[idxRuta]) return;
 
-            // Zoom fijo tipo navegación: siempre cerca de TU posición (calle, casas
-            // visibles), sin importar qué tan lejos esté el próximo cliente pendiente —
-            // así se comporta igual que Google Maps/Waze mientras manejas.
-            const ZOOM_NAVEGACION_REPARTIDOR = 18;
+            const pendientes = rutasEstructuradas[idxRuta].filter(p =>
+                p.id !== 0 && p.lat !== null && p.lng !== null && !p.entregado &&
+                (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+            );
+
+            let distanciaMasCercana = 2000; // valor por defecto si no hay pendientes cerca
+            pendientes.forEach(p => {
+                const d = distanciaMetrosEntreCoords(lat, lng, p.lat, p.lng);
+                if (d < distanciaMasCercana) distanciaMasCercana = d;
+            });
+
+            const zoom = calcularZoomSegunDistancia(distanciaMasCercana);
             _cambioMapaProgramatico = true;
-            map.setView([lat, lng], ZOOM_NAVEGACION_REPARTIDOR, { animate: true });
+            map.setView([lat, lng], zoom, { animate: true });
             setTimeout(() => { _cambioMapaProgramatico = false; }, 400); // tras la animación de setView
 
             actualizarBarraNavegacionRepartidor();
