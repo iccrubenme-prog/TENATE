@@ -73,6 +73,31 @@
         }
         .btn-logout:hover { background: rgba(255,255,255,0.4); }
 
+        .btn-hamburguesa {
+            display: none; position: absolute; top: 8px; left: 10px; background: rgba(255,255,255,0.2);
+            color: white; border: none; width: 30px; height: 30px; border-radius: 4px;
+            cursor: pointer; font-size: 18px; line-height: 1;
+        }
+        .btn-hamburguesa:hover { background: rgba(255,255,255,0.4); }
+        body.vista-repartidor .btn-hamburguesa { display: block; }
+
+        #drawer-overlay-repartidor {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 4000;
+        }
+        #drawer-repartidor {
+            position: fixed; top: 0; left: 0; bottom: 0; width: 300px; max-width: 85vw;
+            background: #fff; z-index: 4001; box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+            overflow-y: auto; padding: 16px; transform: translateX(-100%);
+            transition: transform 0.25s ease-out;
+        }
+        #drawer-repartidor.abierto { transform: translateX(0); }
+        .drawer-header-repartidor {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #eee;
+        }
+        .drawer-header-repartidor strong { font-size: 15px; color: #2c3e50; }
+        .btn-cerrar-drawer { background: none; border: none; font-size: 20px; cursor: pointer; color: #888; }
+
         .btn-sync {
             background: #2f80ed; color: white; border: none; padding: 10px; font-weight: bold;
             border-radius: 5px; cursor: pointer; width: 100%; margin-bottom: 8px; display: block; text-align: center; font-size: 13px;
@@ -389,12 +414,33 @@
         </div>
     </div>
 
+    <div id="drawer-overlay-repartidor" onclick="cerrarDrawerRepartidor()"></div>
+    <div id="drawer-repartidor">
+        <div class="drawer-header-repartidor">
+            <strong>⚙️ Opciones de Ruta</strong>
+            <button class="btn-cerrar-drawer" onclick="cerrarDrawerRepartidor()">✕</button>
+        </div>
+        <div id="drawer-body-repartidor"></div>
+    </div>
+
     <div id="sidebar">
         <div class="header">
+            <button class="btn-hamburguesa" onclick="abrirDrawerRepartidor()">☰</button>
             <button class="btn-logout" onclick="regresarAPantallaDeRoles()">🔄 Salir</button>
             <h2 style="margin:0; font-size: 18px;">Logística - TENATE</h2>
             <p id="subtitulo-rol-actual" style="margin: 3px 0 0 0; font-size: 12px; opacity: 0.8;">Distribución Inteligente</p>
         </div>
+
+        <div id="barra-progreso-entregas" style="display:none; padding:12px 16px; background:#f8f9fa; border-bottom:1px solid #e0e0e0;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+                <span style="font-size:13px; font-weight:bold; color:#555;">📦 Paquetes entregados</span>
+                <span id="texto-progreso-entregas" style="font-size:22px; font-weight:bold; color:#2c3e50;">0/0</span>
+            </div>
+            <div style="background:#e0e0e0; border-radius:8px; height:12px; overflow:hidden;">
+                <div id="barra-progreso-entregas-fill" style="background:#3498db; height:100%; width:0%; transition:width 0.3s ease; border-radius:8px;"></div>
+            </div>
+        </div>
+
         <div class="content">
             <button id="adm-btn-depot" class="btn-depot-config" onclick="configurarDepositoManual()">⚙️ Ubicación TENATE</button>
             <button id="adm-btn-sync" class="btn-sync" onclick="importarDatosDesdeSheetsConReintentos()">🔄 Sincronizar Google Sheets</button>
@@ -407,11 +453,14 @@
                 <div id="lista-ubicaciones-repartidores-items" style="font-size:13px;"></div>
             </div>
             
-            <div class="control-rutas">
-                <label style="margin-top:0; color:#27ae60; font-size:13px; font-weight:bold; display:block;">📅 Filtrar por Día:</label>
-                <select id="filtro-dia" onchange="aplicarFiltroDia(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
-                    <option value="todos">📋 Todos los días</option>
-                </select>
+            <div class="control-rutas" id="bloque-control-rutas">
+                <div id="ancla-filtro-dia"></div>
+                <div id="bloque-filtro-dia">
+                    <label style="margin-top:0; color:#27ae60; font-size:13px; font-weight:bold; display:block;">📅 Filtrar por Día:</label>
+                    <select id="filtro-dia" onchange="aplicarFiltroDia(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
+                        <option value="todos">📋 Todos los días</option>
+                    </select>
+                </div>
 
                 <div id="adm-bloque-optimizacion">
                     <label for="num-repartidores">Cantidad de Rutas a Generar:</label>
@@ -423,9 +472,13 @@
                 <select id="filtro-repartidor" onchange="aplicarFiltroDeRutaMapeada(this.value)">
                     </select>
 
-                <label for="hora-salida-ruta" style="margin-top:10px; color:#8e44ad; font-size:13px; font-weight:bold; display:block;">🕒 Hora de Salida a Ruta:</label>
-                <input type="time" id="hora-salida-ruta" value="" onchange="actualizarHoraSalidaRuta(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
+                <div id="ancla-hora-salida"></div>
+                <div id="bloque-hora-salida">
+                    <label for="hora-salida-ruta" style="margin-top:10px; color:#8e44ad; font-size:13px; font-weight:bold; display:block;">🕒 Hora de Salida a Ruta:</label>
+                    <input type="time" id="hora-salida-ruta" value="" onchange="actualizarHoraSalidaRuta(this.value)" style="width:100%; padding:8px; border-radius:4px; border:1px solid #ccc; margin-bottom:10px; font-size:14px;">
+                </div>
 
+                <div id="ancla-reoptimizar"></div>
                 <button id="btn-reopt-individual" class="btn-reopt-single" onclick="reoptimizarRutaDesdeUbicacionActual()">⚡ Reoptimizar Mi Ruta (Desde mi GPS)</button>
 
                 <div class="bloque-filtro-clientes">
@@ -507,6 +560,10 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.fullscreen@3.0.2/Control.FullScreen.js"></script>
+    <!-- Plugin de rotación de mapa (modo navegación "rumbo arriba"). Si por algún motivo
+         no carga, el código detecta que map.setBearing no existe y usa automáticamente
+         el modo anterior (mapa fijo, ícono girando) — nunca deja al repartidor sin mapa. -->
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
     <script>
         const URL_GOOGLE_SCRIPT = "https://script.google.com/macros/s/AKfycbxWR0Th-bADgFDlXbx6L-HswFo_cDxXjpa9OQTw6v_4Ha5owra7-MwdOZEnwhDc4dQhkw/exec"; 
 
@@ -627,7 +684,16 @@
             return color;
         }
 
-        const map = L.map('map', { fullscreenControl: false }).setView([deposito.lat, deposito.lng], 14);
+        const map = L.map('map', {
+            fullscreenControl: false,
+            // Habilita el modo "rumbo arriba" tipo navegación — solo se activa
+            // programáticamente (map.setBearing) para el repartidor, nunca con gestos
+            // manuales, para no confundir al admin ni complicar el uso normal del mapa.
+            rotate: true,
+            rotateControl: false,
+            touchRotate: false,
+            shiftKeyRotate: false
+        }).setView([deposito.lat, deposito.lng], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 
         // Control de pantalla completa propio (no el del plugin): el plugin solo agranda
@@ -976,19 +1042,35 @@
 
         function construirMapaNombresPorRuta() {
             const nombresPorRuta = {};
+            const nombresPorRutaFallback = {}; // respaldo de cualquier día, por si la ruta no tiene nadie en el día activo
+
             clientes.forEach(c => {
                 if (!c.rutaAsignadaBase || !c.quien || c.quien.trim() === "" || c.quien.trim() === "Sin Asignar") return;
                 const match = c.rutaAsignadaBase.match(/\d+/);
                 if (!match) return;
                 const idx = parseInt(match[0]) - 1;
-                // Solo actualizar si aún no hay nombre, o si este cliente es del día activo
-                // (para que el nombre del día filtrado tenga prioridad sobre otros días)
-                if (!(idx in nombresPorRuta)) {
-                    nombresPorRuta[idx] = c.quien.trim();
-                } else if (diaActivoFiltrado !== "todos" && c.dia === diaActivoFiltrado) {
+
+                // Respaldo: el primer nombre que aparezca, de cualquier día (se usa solo
+                // si al final no hay ningún cliente del día activo para esa ruta).
+                if (!(idx in nombresPorRutaFallback)) {
+                    nombresPorRutaFallback[idx] = c.quien.trim();
+                }
+
+                // El día activo SIEMPRE tiene prioridad, sin importar en qué orden vengan
+                // los datos — antes solo ganaba si el cliente del día activo aparecía
+                // DESPUÉS del de otro día, dejando el nombre equivocado si el orden era
+                // al revés (ej. admin viendo Domingo B pero mostrando el nombre de
+                // Domingo A porque ese cliente estaba primero en la hoja).
+                if (diaActivoFiltrado === "todos" || c.dia === diaActivoFiltrado) {
                     nombresPorRuta[idx] = c.quien.trim();
                 }
             });
+
+            // Completar con el respaldo las rutas que no tuvieron ningún cliente del día activo
+            for (const idx in nombresPorRutaFallback) {
+                if (!(idx in nombresPorRuta)) nombresPorRuta[idx] = nombresPorRutaFallback[idx];
+            }
+
             return nombresPorRuta;
         }
 
@@ -1705,6 +1787,7 @@ if (punto.notas && punto.notas.trim() !== "") {
 
     actualizarLeyendaRutasMapa();
     actualizarBarraNavegacionRepartidor();
+    actualizarBarraProgresoEntregas();
 }
 
 
@@ -2342,6 +2425,9 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             ultimaPosicionRecalculada = null;
             ultimoRumboConocido = null;
             posicionAnteriorParaRumbo = null;
+            if (typeof map.setBearing === "function") {
+                try { map.setBearing(0); } catch (e) {}
+            }
         }
 
         function manejarNuevaPosicionGPSVivo(lat, lng) {
@@ -2409,6 +2495,14 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             if (rumbo !== null) ultimoRumboConocido = rumbo;
             posicionAnteriorParaRumbo = { lat, lng };
 
+            // Modo navegación: si el plugin de rotación cargó bien, el MAPA gira para que
+            // la dirección de avance quede siempre "arriba" (como Maps/Waze), y el ícono
+            // se deja fijo apuntando hacia arriba (girar ambos a la vez se vería mal). Si
+            // el plugin no cargó por algún motivo, se usa el modo anterior de respaldo:
+            // mapa fijo al norte y el ícono girando según el rumbo — nunca se rompe.
+            const hayRotacionDeMapa = typeof map.setBearing === "function";
+            const anguloParaIcono = hayRotacionDeMapa ? 0 : rumbo;
+
             // El ícono del repartidor se mueve en CADA actualización de GPS (no cada
             // 150m/1min como el resto), para que se sienta en tiempo real igual que el
             // mapa. Esto es solo visual — no toca rutas, cte ni Sheets — y se actualiza
@@ -2416,12 +2510,17 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             // posición real sin importar si el mapa lo está siguiendo o no).
             if (marcadorMiGpsActual) {
                 marcadorMiGpsActual.setLatLng([lat, lng]);
-                marcadorMiGpsActual.setIcon(crearIconoRepartidorEnVivo(rumbo));
+                marcadorMiGpsActual.setIcon(crearIconoRepartidorEnVivo(anguloParaIcono));
             } else {
-                marcadorMiGpsActual = L.marker([lat, lng], { icon: crearIconoRepartidorEnVivo(rumbo) }).addTo(map);
+                marcadorMiGpsActual = L.marker([lat, lng], { icon: crearIconoRepartidorEnVivo(anguloParaIcono) }).addTo(map);
             }
 
             if (!seguimientoCamaraActivo) return;
+
+            if (hayRotacionDeMapa && rumbo !== null) {
+                try { map.setBearing(rumbo); } catch (e) { console.warn("No se pudo rotar el mapa:", e); }
+            }
+
             const idxRuta = parseInt(rutaActivaFiltrada);
             if (isNaN(idxRuta) || !rutasEstructuradas[idxRuta]) return;
 
@@ -2451,6 +2550,42 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             btn.style.color = pausado ? "#fff" : "#000";
         }
 
+        // ── Cajón deslizable de opciones (vista repartidor) ───────────────────────
+        // Agrupa "Filtrar por Día", "Hora de Salida a Ruta" y "Reoptimizar Mi Ruta" —
+        // ya no son tan necesarios a la vista con la reoptimización automática, pero
+        // se conservan disponibles detrás del botón ☰, sin eliminarlos.
+        function moverControlesRepartidorADrawer() {
+            const drawerBody = document.getElementById('drawer-body-repartidor');
+            const bloqueDia = document.getElementById('bloque-filtro-dia');
+            const bloqueHora = document.getElementById('bloque-hora-salida');
+            const btnReopt = document.getElementById('btn-reopt-individual');
+            if (drawerBody && bloqueDia) drawerBody.appendChild(bloqueDia);
+            if (drawerBody && bloqueHora) drawerBody.appendChild(bloqueHora);
+            if (drawerBody && btnReopt) drawerBody.appendChild(btnReopt);
+        }
+
+        function moverControlesASidebarNormal() {
+            const anclaDia = document.getElementById('ancla-filtro-dia');
+            const anclaHora = document.getElementById('ancla-hora-salida');
+            const anclaReopt = document.getElementById('ancla-reoptimizar');
+            const bloqueDia = document.getElementById('bloque-filtro-dia');
+            const bloqueHora = document.getElementById('bloque-hora-salida');
+            const btnReopt = document.getElementById('btn-reopt-individual');
+            if (anclaDia && bloqueDia) anclaDia.insertAdjacentElement('afterend', bloqueDia);
+            if (anclaHora && bloqueHora) anclaHora.insertAdjacentElement('afterend', bloqueHora);
+            if (anclaReopt && btnReopt) anclaReopt.insertAdjacentElement('afterend', btnReopt);
+        }
+
+        function abrirDrawerRepartidor() {
+            document.getElementById('drawer-overlay-repartidor').style.display = 'block';
+            document.getElementById('drawer-repartidor').classList.add('abierto');
+        }
+
+        function cerrarDrawerRepartidor() {
+            document.getElementById('drawer-overlay-repartidor').style.display = 'none';
+            document.getElementById('drawer-repartidor').classList.remove('abierto');
+        }
+
         function activarSeguimientoCamara() {
             seguimientoCamaraActivo = true;
             marcarBotonCentrarComoPausado(false);
@@ -2467,6 +2602,9 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             if (ROL_ACTUAL !== "repartidor") return;
             seguimientoCamaraActivo = false;
             marcarBotonCentrarComoPausado(true);
+            if (typeof map.setBearing === "function") {
+                try { map.setBearing(0); } catch (e) {}
+            }
 
             const idxRuta = parseInt(rutaActivaFiltrada);
             let coords = [[deposito.lat, deposito.lng]];
@@ -2489,6 +2627,81 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
         }
 
         // ── Barras de navegación tipo Maps (repartidor) ───────────────────────────
+        // Muestra "entregados/total" de la ruta activa del repartidor, con una barra de
+        // progreso visual — para que sepa de un vistazo cuántos paquetes le faltan.
+        function actualizarBarraProgresoEntregas() {
+            const contenedor = document.getElementById('barra-progreso-entregas');
+            if (!contenedor) return;
+
+            if (ROL_ACTUAL !== 'repartidor') { contenedor.style.display = 'none'; return; }
+
+            const idxRuta = parseInt(rutaActivaFiltrada);
+            if (isNaN(idxRuta) || !rutasEstructuradas[idxRuta]) { contenedor.style.display = 'none'; return; }
+
+            const clientesRuta = rutasEstructuradas[idxRuta].filter(p =>
+                p.id !== 0 && (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+            );
+            const total = clientesRuta.length;
+            if (total === 0) { contenedor.style.display = 'none'; return; }
+
+            const entregados = clientesRuta.filter(p => p.entregado).length;
+            const porcentaje = Math.round((entregados / total) * 100);
+
+            contenedor.style.display = 'block';
+            document.getElementById('texto-progreso-entregas').textContent = `${entregados}/${total}`;
+
+            const barra = document.getElementById('barra-progreso-entregas-fill');
+            barra.style.width = porcentaje + '%';
+            barra.style.background = (entregados >= total) ? '#27ae60' : '#3498db'; // verde al completar, azul mientras avanza
+        }
+
+        // Cuando ya no hay clientes pendientes, se calcula el regreso real al depósito
+        // (distancia, tiempo, hora de llegada) en vez de mostrar guiones. Se limita la
+        // frecuencia de recálculo para no saturar el servicio de rutas (OSRM).
+        let ultimoCalculoRegresoTenate = 0;
+        let ultimaPosicionRegresoTenate = null;
+        const INTERVALO_MINIMO_REGRESO_TENATE_MS = 20000; // 20s
+        const UMBRAL_METROS_REGRESO_TENATE = 50;
+
+        function calcularYMostrarRegresoATenate() {
+            const distEl = document.getElementById("nav-inferior-distancia");
+            const tiempoEl = document.getElementById("nav-inferior-tiempo");
+            const llegadaEl = document.getElementById("nav-inferior-llegada");
+            const etaBadge = document.getElementById("nav-superior-eta-badge");
+
+            if (!marcadorMiGpsActual) {
+                distEl.textContent = "—"; tiempoEl.textContent = "—"; llegadaEl.textContent = "—"; etaBadge.textContent = "—";
+                return;
+            }
+
+            const ll = marcadorMiGpsActual.getLatLng();
+            const ahora = Date.now();
+            const seMovioLoSuficiente = !ultimaPosicionRegresoTenate ||
+                distanciaMetrosEntreCoords(ll.lat, ll.lng, ultimaPosicionRegresoTenate.lat, ultimaPosicionRegresoTenate.lng) >= UMBRAL_METROS_REGRESO_TENATE;
+            if (!seMovioLoSuficiente && (ahora - ultimoCalculoRegresoTenate) < INTERVALO_MINIMO_REGRESO_TENATE_MS) return; // ya está actualizado, no repetir
+
+            ultimoCalculoRegresoTenate = ahora;
+            ultimaPosicionRegresoTenate = { lat: ll.lat, lng: ll.lng };
+
+            const coords = `${ll.lng},${ll.lat};${deposito.lng},${deposito.lat}`;
+            fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=false`)
+                .then(r => r.json())
+                .then(res => {
+                    if (!res.routes || !res.routes[0]) return;
+                    const metros = res.routes[0].distance;
+                    const minutos = Math.round((res.routes[0].duration / 60) * obtenerFactorTrafico());
+
+                    distEl.textContent = metros >= 1000 ? `${(metros / 1000).toFixed(1)} km` : `${Math.round(metros)} m`;
+                    tiempoEl.textContent = `${minutos} min`;
+
+                    const ahoraFecha = new Date();
+                    const horaLlegada = formatearHora((ahoraFecha.getHours() * 60) + ahoraFecha.getMinutes() + minutos);
+                    llegadaEl.textContent = horaLlegada;
+                    etaBadge.textContent = horaLlegada;
+                })
+                .catch(() => {});
+        }
+
         function obtenerProximoClientePendiente() {
             if (ROL_ACTUAL !== "repartidor") return null;
             const idxRuta = parseInt(rutaActivaFiltrada);
@@ -2514,11 +2727,8 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             const cliente = obtenerProximoClientePendiente();
             if (!cliente) {
                 nombreEl.textContent = "🎉 Sin clientes pendientes";
-                dirEl.textContent = "Ruta completada";
-                etaBadge.textContent = "—";
-                distEl.textContent = "—";
-                tiempoEl.textContent = "—";
-                llegadaEl.textContent = "—";
+                dirEl.textContent = "Ruta completada, regresamos al TENATE";
+                calcularYMostrarRegresoATenate();
                 return;
             }
 
@@ -3145,7 +3355,19 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             document.getElementById("nav-barra-superior").style.display = mostrarBarrasNav ? "flex" : "none";
             document.getElementById("nav-botones-circulares").style.display = mostrarBarrasNav ? "flex" : "none";
             document.getElementById("nav-barra-inferior").style.display = mostrarBarrasNav ? "flex" : "none";
-            
+
+            // "Filtrar por Día", "Hora de Salida a Ruta" y "Reoptimizar Mi Ruta" ya no
+            // son tan necesarios a la vista para el repartidor (la reoptimización ahora
+            // corre en automático) — se agrupan en el cajón deslizable del menú ☰, sin
+            // eliminarlos. Para el admin siguen en su lugar de siempre.
+            if (rol === "repartidor") {
+                moverControlesRepartidorADrawer();
+            } else {
+                cerrarDrawerRepartidor();
+                moverControlesASidebarNormal();
+            }
+            actualizarBarraProgresoEntregas();
+
             const subtitulo = document.getElementById("subtitulo-rol-actual");
             const btnSync = document.getElementById("adm-btn-sync");
             const btnDepot = document.getElementById("adm-btn-depot");
@@ -3172,6 +3394,7 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
                 if (bloqueFiltroClientes) bloqueFiltroClientes.style.display = "block";
                 rutaActivaFiltrada = "todas";
                 selectFiltro.value = "todas";
+                document.getElementById("bloque-control-rutas").style.display = "block";
             } else {
                 const rutaSeleccionada = document.getElementById("select-ruta-repartidor-gate").value;
                 const diaSeleccionadoGate = document.getElementById("select-dia-repartidor-gate").value;
@@ -3199,6 +3422,10 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
                 btnReopt.style.display = "block";
                 if (bloqueFiltroClientes) bloqueFiltroClientes.style.display = "none";
                 rutaActivaFiltrada = rutaSeleccionada;
+                // Todo lo que iba dentro de .control-rutas ya se movió al cajón deslizable
+                // — se oculta el contenedor completo para que no quede la caja vacía con
+                // su propio fondo/borde/padding en pantalla.
+                document.getElementById("bloque-control-rutas").style.display = "none";
             }
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
@@ -3521,6 +3748,8 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
         }
 
         function regresarAPantallaDeRoles() {
+            cerrarDrawerRepartidor();
+
             // Si quien sale es el repartidor, avisar al backend para que su punto
             // desaparezca del mapa del admin de inmediato (no esperar a que expire solo).
             if (ROL_ACTUAL === "repartidor") {
