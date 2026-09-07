@@ -3309,9 +3309,23 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
                                 const nombre = nombresPorRuta[idx] ? ` (${nombresPorRuta[idx]})` : "";
                                 const segundos = Math.max(0, Math.round((Date.now() - (u.ts || 0)) / 1000));
                                 const textoHace = segundos < 60 ? `hace ${segundos}s` : `hace ${Math.round(segundos / 60)} min`;
+
+                                // Mismo cálculo que la barra de progreso del repartidor:
+                                // entregados/total de esa ruta, respetando el día activo.
+                                let textoProgreso = "";
+                                if (rutasEstructuradas[idx]) {
+                                    const clientesRuta = rutasEstructuradas[idx].filter(p =>
+                                        p.id !== 0 && (diaActivoFiltrado === "todos" || p.dia === diaActivoFiltrado)
+                                    );
+                                    if (clientesRuta.length > 0) {
+                                        const entregados = clientesRuta.filter(p => p.entregado).length;
+                                        textoProgreso = ` <span style="color:#555; font-size:11px; font-weight:bold;">📦 ${entregados}/${clientesRuta.length}</span>`;
+                                    }
+                                }
+
                                 return `<div style="display:flex; align-items:center; gap:8px; padding:4px 0; border-bottom:1px solid #eee;">
                                     <span style="width:12px; height:12px; border-radius:50%; background:${color}; flex-shrink:0;"></span>
-                                    <span style="flex:1;">Ruta ${idx + 1}${nombre}</span>
+                                    <span style="flex:1;">Ruta ${idx + 1}${nombre}${textoProgreso}</span>
                                     <span style="color:#888; font-size:11px;">${textoHace}</span>
                                 </div>`;
                             });
