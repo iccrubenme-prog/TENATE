@@ -1563,6 +1563,7 @@
             if (f) { try { const r = f.call(document); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
         }
         function _reajustarMapaTrasCambioPantalla() {
+            [0, 250, 700].forEach(ms => setTimeout(() => { try { actualizarAlturaSheetRepartidor(); } catch (e) {} }, ms));
             setTimeout(() => { try { map.invalidateSize(); if (typeof _navRotando !== "undefined" && _navRotando) navAplicarLayout(true); } catch (e) {} }, 200);
             const btn = document.querySelector('.leaflet-control-container a[title="Pantalla completa"], .leaflet-control-container a[title="Salir de pantalla completa"]');
             const on = document.body.classList.contains("mapa-solo");
@@ -4606,7 +4607,7 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             const sub = document.getElementById("adm-top-sub");
             if (sub) sub.textContent = `${plAdm(rutasConClientes,'ruta')} · ${plAdm(totalCli + sinRutaLista.length,'cliente')}${sinRutaLista.length ? ` (${sinRutaLista.length} sin ruta)` : ""}`;
             const wrapper = document.getElementById("map-wrapper");
-            if (wrapper) wrapper.style.setProperty("--adm-sheet-h", (document.body.className.indexOf("adm-panel-") >= 0 ? 0 : sheet.offsetHeight) + "px");
+            if (wrapper && !document.body.classList.contains("mapa-solo")) wrapper.style.setProperty("--adm-sheet-h", (document.body.className.indexOf("adm-panel-") >= 0 ? 0 : sheet.offsetHeight) + "px");
         }
         setInterval(() => { if (ROL_ACTUAL === "admin") actualizarHojaAdmin(); }, 2000);
 
@@ -4841,8 +4842,24 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             // Altura de la hoja → los botones flotantes y la atribución del mapa quedan por encima
             const sheet = document.getElementById("nav-barra-inferior");
             const wrapper = document.getElementById("map-wrapper");
-            if (sheet && wrapper) setTimeout(() => wrapper.style.setProperty("--sheet-h", sheet.offsetHeight + "px"), 0);
+            setTimeout(actualizarAlturaSheetRepartidor, 0);
         }
+        // Altura de la hoja inferior del repartidor (de ella dependen los botones circulares de la derecha).
+        // Solo se mide cuando la hoja se ve: en modo "solo mapa" está oculta (altura 0) y, si se guardara ese 0,
+        // al salir los botones quedaban DETRÁS de la hoja con el nombre del cliente / navegar / entregado.
+        function actualizarAlturaSheetRepartidor() {
+            const sheet = document.getElementById("nav-barra-inferior");
+            const wrapper = document.getElementById("map-wrapper");
+            if (!sheet || !wrapper || document.body.classList.contains("mapa-solo")) return;
+            const h = sheet.offsetHeight;
+            if (h > 0) wrapper.style.setProperty("--sheet-h", h + "px");
+        }
+        (function () {
+            const sheet = document.getElementById("nav-barra-inferior");
+            if (sheet && window.ResizeObserver) new ResizeObserver(() => actualizarAlturaSheetRepartidor()).observe(sheet);
+            window.addEventListener("resize", () => setTimeout(actualizarAlturaSheetRepartidor, 150));
+            window.addEventListener("orientationchange", () => setTimeout(actualizarAlturaSheetRepartidor, 400));
+        })();
 
         function irAProximoClienteDesdeBarraNav() {
             const cliente = obtenerProximoClientePendiente();
