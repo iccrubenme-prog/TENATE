@@ -370,6 +370,7 @@
         .modal-btn-cancel { background: #7f8c8d; margin-top: 8px; }
         /* Paleta TENATE para la ventana de entrega (el botón Confirmar conserva su verde) */
         #payment-modal { background: rgba(59,42,28,.55) !important; }
+        #map-wrapper.modal-pago-abierto { z-index: 9000 !important; }
         #payment-modal .modal-content { background: #fffdf9; border: 1px solid #f0e6d8; border-top: 6px solid #D7B182; border-radius: 22px; padding: 24px 22px 20px; width: min(320px, 88vw); box-shadow: 0 12px 40px rgba(59,42,28,.35); }
         #payment-modal h3 { color: #3b2a1c; font-size: 20px; font-weight: 800; margin-bottom: 6px; }
         #payment-modal #modal-cliente-monto { display: inline-block; margin: 4px 0 14px; padding: 5px 14px; border-radius: 999px; background: #f5ece3; color: #5a3d26; font-weight: 800; }
@@ -522,7 +523,7 @@
                 font-weight: 800; font-size: 15px; padding: 14px; width: 100%; cursor: pointer;
             }
             body.vista-repartidor .btn-salir-drawer { display: block; }
-            body.vista-repartidor #btn-reopt-circular { display: block; }
+            body.vista-repartidor #btn-reopt-circular { display: none !important; }
             body.vista-repartidor #leyenda-rutas-barra, body.vista-repartidor .leyenda-rutas-mapa { display: none !important; }
             body.vista-repartidor .route-section-title { background: #5a3d26 !important; color: #fff !important; border-radius: 12px; }
             #app-tabbar button:focus, #app-tabbar button:focus-visible { outline: none; box-shadow: none; }
@@ -1112,6 +1113,29 @@
             .cg-leyenda li { padding:1px 0 !important; }
             .cg-fila { grid-template-columns:minmax(40px,30%) 1fr auto !important; gap:4px !important; }
         }
+
+        /* ══ Banner inferior en "solo mapa" (repartidor) ══ */
+        #nav-solo-banner { display: none; }
+        body.mapa-solo #aviso-app { bottom: 150px !important; }
+        body.mapa-solo.vista-repartidor #nav-solo-banner {
+            display: block; position: absolute; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 1200;
+            background: #fffdf9; border-radius: 20px; box-shadow: 0 6px 18px rgba(90,61,38,.28); padding: 10px 14px 11px;
+            max-width: 560px; box-sizing: border-box;
+        }
+        #nav-solo-banner .sb-fila { display: flex; align-items: center; gap: 10px; }
+        #sb-num { width: 32px; height: 32px; border-radius: 50%; background: #5a3d26; color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 14px; flex-shrink: 0; }
+        #nav-solo-banner .sb-txt { flex: 1; min-width: 0; }
+        #sb-nombre { font-weight: 800; font-size: 15px; color: #5a3d26; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #sb-dir { font-size: 11.5px; color: #a07a4e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        #sb-monto { background: #f1e4d0; color: #5a3d26; font-weight: 800; font-size: 15px; border-radius: 14px; padding: 6px 11px; flex-shrink: 0; white-space: nowrap; }
+        #nav-solo-banner .sb-datos { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 9px; padding-top: 8px; border-top: 1px solid #f0e6d8; text-align: center; }
+        #nav-solo-banner .sb-datos b { display: block; font-size: 15px; color: #3b2a1c; }
+        #nav-solo-banner .sb-datos small { font-size: 10px; color: #a07a4e; }
+        body.mapa-solo.vista-repartidor .leaflet-bottom { bottom: var(--solo-h, 110px) !important; }
+        body.mapa-solo.vista-repartidor #nav-attrib { bottom: calc(var(--solo-h, 110px) + 4px); }
+        @media (min-height: 541px), (orientation: portrait) {
+            body.mapa-solo.vista-repartidor #nav-botones-circulares { bottom: calc(var(--solo-h, 110px) + 18px) !important; }
+        }
 </style>
 </head>
 <body>
@@ -1299,6 +1323,19 @@
         <div id="adm-sim-chip"><span>🔮</span><span id="adm-sim-chip-txt"></span><button onclick="simVolverAutomatico()">↺ Automático</button></div>
         <div id="nav-maniobra" aria-live="polite"><div class="nm-ic" id="nm-icono"></div><div class="nm-tx"><span id="nm-dist">—</span><span id="nm-instr"></span><span id="nm-calle"></span></div></div>
         <div id="nav-attrib">© OpenStreetMap</div>
+        <!-- Banner inferior del modo "solo mapa" (repartidor): cliente, dirección, cobro, traslado, llegada y distancia -->
+        <div id="nav-solo-banner">
+            <div class="sb-fila">
+                <div id="sb-num">–</div>
+                <div class="sb-txt"><div id="sb-nombre">—</div><div id="sb-dir">—</div></div>
+                <div id="sb-monto">—</div>
+            </div>
+            <div class="sb-datos">
+                <div><b id="sb-dist">—</b><small>Distancia</small></div>
+                <div><b id="sb-tiempo">—</b><small>Traslado</small></div>
+                <div><b id="sb-llegada">—</b><small>Llegada</small></div>
+            </div>
+        </div>
                 <!-- Botones circulares flotantes -->
         <div id="nav-botones-circulares" style="display:none; flex-direction:column; gap:10px; position:absolute; right:12px; bottom:170px; z-index:1000;">
             <button id="btn-mapa-solo" onclick="alternarPantallaCompletaMapa()" title="Ver solo el mapa" style="width:44px; height:44px; border-radius:50%; background:#fff; border:none; box-shadow:0 2px 8px rgba(0,0,0,0.3); font-size:18px; cursor:pointer;">⛶</button>
@@ -1313,6 +1350,10 @@
         <!-- Barra inferior tipo navegación: distancia / tiempo / llegada + acción -->
         <div id="nav-barra-inferior" style="display:none; position:absolute; bottom:0; left:0; right:0; z-index:1000; background:#fff; border-radius:16px 16px 0 0; box-shadow:0 -3px 12px rgba(0,0,0,0.25); padding:12px 16px; align-items:center; justify-content:space-between; gap:10px;">
             <div style="display:flex; gap:18px;">
+                <div style="text-align:center;">
+                    <div id="nav-inferior-monto" style="font-weight:800; font-size:15px; color:#5a3d26;">—</div>
+                    <div style="font-size:10px; color:#999;">Cobro</div>
+                </div>
                 <div style="text-align:center;">
                     <div id="nav-inferior-distancia" style="font-weight:bold; font-size:15px; color:#2c3e50;">—</div>
                     <div style="font-size:10px; color:#999;">Distancia</div>
@@ -1573,6 +1614,7 @@
         // Botón ⛶ del mapa: deja solo el mapa (admin: con su banner superior; repartidor: con sus banners superiores)
         function alternarPantallaCompletaMapa(btn) {
             const activo = document.body.classList.toggle("mapa-solo");
+            if (activo) setTimeout(actualizarBannerSoloMapa, 0);
             if (activo) { _fsPorMapa = !_enPantallaCompleta() && _pedirPantallaCompleta(); }
             else { if (_fsPorMapa) _salirPantallaCompleta(); _fsPorMapa = false; }
             _reajustarMapaTrasCambioPantalla();
@@ -2833,10 +2875,16 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             }
             
             document.getElementById("payment-modal").style.display = "flex";
+            // La ventana vive dentro de #map-wrapper (para verse en pantalla completa), y ese contenedor queda
+            // por debajo de la lista de Clientes (z-index 1500) y de la barra inferior: se sube mientras está abierta.
+            const _mw = document.getElementById("map-wrapper"); if (_mw) _mw.classList.add("modal-pago-abierto");
             map.closePopup();
         }
 
-        function cerrarModalPago() { document.getElementById("payment-modal").style.display = "none"; }
+        function cerrarModalPago() {
+            document.getElementById("payment-modal").style.display = "none";
+            const _mw = document.getElementById("map-wrapper"); if (_mw) _mw.classList.remove("modal-pago-abierto");
+        }
 
         function confirmarEntregaConPago() {
             const cl = clientes.find(c => c.id === clienteEnProcesoId);
@@ -2930,6 +2978,7 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
         // el cambio de orden que el propio botón acaba de guardar), la línea y las horas
         // siguen partiendo de tu posición real en vez de reiniciar desde El Tenate.
         let ultimaPosicionGPSVivo = null; // { lat, lng, idxRuta }
+        let ultimaPosicionGPSReal = null; // { lat, lng, ts } — última lectura del seguimiento en vivo
 
 
         // ===== Trazo de ruta: línea sólida (admin) o flechas direccionales (repartidor) =====
@@ -3379,23 +3428,68 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             return true;
         }
 
+        // Reoptimizar mi ruta (manual). Antes: pedía un GPS nuevo SIN límite de espera; con señal débil o parado
+        // podía tardar muchísimo (o fallar en silencio), por eso se tocaba varias veces y "no pasaba nada".
+        // Ahora: usa de inmediato la última posición del seguimiento en vivo (si es reciente), con límite de 8 s
+        // si hay que pedir una nueva, ignora toques repetidos y avisa con claridad qué pasó.
+        let _reoptEnCurso = false, _reoptUltimoTs = 0;
         function reoptimizarRutaDesdeUbicacionActual() {
             if (ROL_ACTUAL !== "repartidor") return;
+            if (_reoptEnCurso) { mostrarAvisoApp("Reoptimizando, un momento…", 2500); return; }
+            if (Date.now() - _reoptUltimoTs < 2000) return; // toque doble: ya se atendió
             const idxRuta = parseInt(rutaActivaFiltrada);
             if (isNaN(idxRuta) || !rutasEstructuradas[idxRuta]) return;
+            if (!confirm("¿Quieres recalcular el orden de tus entregas pendientes basándote en tu ubicación actual?")) return;
 
-            if (confirm("¿Quieres recalcular el orden de tus entregas pendientes basándote en tu ubicación actual?")) {
-                navigator.geolocation.getCurrentPosition(position => {
-                    const exito = reoptimizarYRecalcularDesdeGPS(position.coords.latitude, position.coords.longitude);
-                    if (exito === false) {
-                        alert("No tienes clientes pendientes con coordenadas para reoptimizar.");
-                    } else {
-                        alert("¡Ruta reoptimizada con éxito según tu posición actual incorporando el regreso a El Tenate!");
+            const idsPendientes = () => rutasEstructuradas[idxRuta].filter(p => p.id !== 0 && !p.entregado && p.lat !== null && p.lng !== null && clienteEnDiaActivo(p)).map(p => p.id);
+            const fin = () => { _reoptEnCurso = false; _reoptUltimoTs = Date.now(); };
+            const aplicar = (lat, lng, aproximada) => {
+                try {
+                    const antes = idsPendientes().join(",");
+                    const exito = reoptimizarYRecalcularDesdeGPS(lat, lng, true);
+                    if (exito === false) { mostrarAvisoApp("No tienes clientes pendientes con coordenadas para reoptimizar."); }
+                    else {
+                        const despues = idsPendientes();
+                        const prim = despues.length ? (clientes.find(c => c.id === despues[0]) || {}).nombre : "";
+                        mostrarAvisoApp(antes === despues.join(",")
+                            ? "Tu orden ya es el más corto desde tu ubicación: sin cambios." + (aproximada ? " (ubicación aproximada)" : "")
+                            : "✓ Ruta reoptimizada. Sigues con: " + (prim || "tu siguiente cliente"), 6000);
                     }
-                }, () => {
-                    alert("No se pudo acceder al GPS de tu dispositivo.");
-                }, { enableHighAccuracy: true });
+                } catch (e) { console.error("Reoptimizar falló:", e); mostrarAvisoApp("No se pudo reoptimizar. Intenta de nuevo."); }
+                fin();
+            };
+
+            _reoptEnCurso = true;
+            const ultima = ultimaPosicionGPSReal;
+            if (ultima && Date.now() - ultima.ts < 20000) { aplicar(ultima.lat, ultima.lng, false); return; }
+            if (!navigator.geolocation) { mostrarAvisoApp("Este dispositivo no tiene GPS disponible."); fin(); return; }
+
+            mostrarAvisoApp("Buscando tu ubicación…", 0);
+            let resuelto = false;
+            const respaldo = () => {
+                if (ultima) aplicar(ultima.lat, ultima.lng, true);
+                else { mostrarAvisoApp("No se pudo obtener tu ubicación. Revisa que el GPS esté activo."); fin(); }
+            };
+            const timer = setTimeout(() => { if (resuelto) return; resuelto = true; respaldo(); }, 9000);
+            navigator.geolocation.getCurrentPosition(
+                position => { if (resuelto) return; resuelto = true; clearTimeout(timer); aplicar(position.coords.latitude, position.coords.longitude, false); },
+                () => { if (resuelto) return; resuelto = true; clearTimeout(timer); respaldo(); },
+                { enableHighAccuracy: true, maximumAge: 15000, timeout: 8000 }
+            );
+        }
+
+        // Aviso breve no bloqueante (reemplaza alert() para no interrumpir al repartidor)
+        let _avisoTimer = null;
+        function mostrarAvisoApp(texto, ms = 4500) {
+            let el = document.getElementById("aviso-app");
+            if (!el) {
+                el = document.createElement("div"); el.id = "aviso-app";
+                el.style.cssText = "position:fixed; left:50%; transform:translateX(-50%); bottom:calc(80px + env(safe-area-inset-bottom,0px)); max-width:min(92vw,420px); z-index:20000; background:#5a3d26; color:#fff; padding:11px 18px; border-radius:16px; font-size:14px; font-weight:600; box-shadow:0 6px 18px rgba(59,42,28,.4); text-align:center; line-height:1.3;";
+                document.body.appendChild(el);
             }
+            el.textContent = texto; el.style.display = "block";
+            clearTimeout(_avisoTimer);
+            if (ms > 0) _avisoTimer = setTimeout(() => { el.style.display = "none"; }, ms);
         }
 
         // ── Seguimiento GPS en vivo del repartidor ────────────────────────────────
@@ -3444,6 +3538,7 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             // esperar al primer disparo natural de watchPosition.
             navigator.geolocation.getCurrentPosition(
                 position => {
+                    ultimaPosicionGPSReal = { lat: position.coords.latitude, lng: position.coords.longitude, ts: Date.now() };
                     const idxRuta = parseInt(rutaActivaFiltrada);
                     if (!isNaN(idxRuta)) enviarUbicacionAlBackend(position.coords.latitude, position.coords.longitude, idxRuta);
                     seguirCamaraConGPS(position.coords.latitude, position.coords.longitude, position.coords.heading, position.coords.speed);
@@ -3453,6 +3548,7 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
 
             watchIdGPSVivo = navigator.geolocation.watchPosition(
                 position => {
+                    ultimaPosicionGPSReal = { lat: position.coords.latitude, lng: position.coords.longitude, ts: Date.now() };
                     // Seguimiento del mapa: ligero, corre en CADA actualización de GPS
                     // (no cada 150m/60s), sin tocar rutas ni Sheets.
                     seguirCamaraConGPS(position.coords.latitude, position.coords.longitude, position.coords.heading, position.coords.speed);
@@ -4772,9 +4868,11 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             const distEl = document.getElementById("nav-inferior-distancia");
             const tiempoEl = document.getElementById("nav-inferior-tiempo");
             const llegadaEl = document.getElementById("nav-inferior-llegada");
+            const montoEl = document.getElementById("nav-inferior-monto");
             if (!nombreEl) return;
 
             const cliente = obtenerProximoClientePendiente();
+            if (montoEl) montoEl.textContent = cliente ? textoCobroCliente(cliente) : "—";
             if (!cliente) {
                 nombreEl.textContent = "🎉 Sin clientes pendientes";
                 dirEl.textContent = "Ruta completada, regresamos al TENATE";
@@ -4801,6 +4899,34 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
                 distEl.textContent = "—";
             }
         }
+
+        // Monto a cobrar del cliente (si ya está pagado por anticipado no hay nada que cobrar)
+        function textoCobroCliente(c) {
+            if (c.metodoPago && String(c.metodoPago).trim() === "Pagado") return "Pagado";
+            const m = parseFloat(c.monto);
+            return isNaN(m) ? "—" : "$" + m.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+        // Banner del modo "solo mapa": copia los datos ya calculados de la barra normal y lo mantiene al día
+        function actualizarBannerSoloMapa() {
+            if (!document.body.classList.contains("mapa-solo") || ROL_ACTUAL !== "repartidor") return;
+            const g = id => document.getElementById(id), t = (id, v) => { const e = g(id); if (e && e.textContent !== v) e.textContent = v; };
+            const cli = obtenerProximoClientePendiente();
+            if (cli) {
+                const nv = numeroVisibleCliente(cli);
+                t("sb-num", (nv !== null && nv !== undefined) ? String(nv) : "•");
+                t("sb-nombre", cli.nombre || "Cliente");
+                t("sb-dir", cli.direccion || "");
+                t("sb-monto", textoCobroCliente(cli));
+            } else {
+                t("sb-num", "🏁"); t("sb-nombre", "Sin clientes pendientes"); t("sb-dir", "Regresando al TENATE"); t("sb-monto", "—");
+            }
+            t("sb-dist", (g("nav-inferior-distancia") || {}).textContent || "—");
+            t("sb-tiempo", (g("nav-inferior-tiempo") || {}).textContent || "—");
+            t("sb-llegada", (g("nav-inferior-llegada") || {}).textContent || "—");
+            const b = g("nav-solo-banner"), w = g("map-wrapper");
+            if (b && w && b.offsetHeight > 0) w.style.setProperty("--solo-h", (b.offsetHeight + 10) + "px");
+        }
+        setInterval(actualizarBannerSoloMapa, 1000);
 
         // Hoja inferior estilo app: cliente actual, llamar / WhatsApp / navegar y botón de entrega.
         function actualizarHojaClienteApp(cliente) {
@@ -5470,7 +5596,7 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
 
         function seleccionarRolSistema(rol) {
             ROL_ACTUAL = rol;
-            ultimaPosicionGPSVivo = null; // evita reusar una posición vieja de una sesión/ruta anterior
+            ultimaPosicionGPSVivo = null; ultimaPosicionGPSReal = null; // evita reusar una posición vieja de una sesión/ruta anterior
             seguimientoCamaraActivo = true;
             primerEncuadreRepartidorHecho = false;
             marcarBotonCentrarComoPausado(false);
@@ -6005,7 +6131,7 @@ return texto.replace(/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\s]+/u, "").trim();
             if (intervaloSincroniaLigera) { clearInterval(intervaloSincroniaLigera); intervaloSincroniaLigera = null; }
             detenerSeguimientoGPSEnVivo();
             detenerConsultaUbicacionesRepartidores();
-            ultimaPosicionGPSVivo = null;
+            ultimaPosicionGPSVivo = null; ultimaPosicionGPSReal = null;
             // Limpiar estado guardado al salir voluntariamente
             localStorage.removeItem("tenate_rol");
             localStorage.removeItem("tenate_ruta_seleccionada");
