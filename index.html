@@ -970,8 +970,8 @@
         /* ══ Modo "solo mapa" (botón ⛶ del mapa) ══ */
         body.mapa-solo { --lw: 0px !important; }
         body.mapa-solo #sidebar, body.mapa-solo #app-tabbar, body.mapa-solo #adm-tabbar, body.mapa-solo #adm-sheet,
-        body.mapa-solo #adm-detalle, body.mapa-solo #nav-barra-inferior, body.mapa-solo #adm-pill, body.mapa-solo #leyenda-rutas-barra,
-        body.mapa-solo .leyenda-rutas-mapa, body.mapa-solo #btn-reopt-circular, body.mapa-solo #drawer-repartidor, body.mapa-solo #drawer-overlay-repartidor { display: none !important; }
+        body.mapa-solo #adm-detalle, body.mapa-solo #nav-barra-inferior, body.mapa-solo #adm-pill,
+        body.mapa-solo.vista-repartidor #leyenda-rutas-barra, body.mapa-solo.vista-repartidor .leyenda-rutas-mapa, body.mapa-solo #btn-reopt-circular, body.mapa-solo #drawer-repartidor, body.mapa-solo #drawer-overlay-repartidor { display: none !important; }
         body.mapa-solo.vista-repartidor #nav-barra-inferior, body.mapa-solo.vista-repartidor #nav-barra-inferior[style*="display: flex"], body.mapa-solo.vista-repartidor #sidebar, body.mapa-solo.vista-admin #sidebar { display: none !important; }
         body.mapa-solo #map-wrapper { left: 0 !important; right: 0 !important; top: 0 !important; bottom: 0 !important; width: auto !important; height: auto !important; }
         body.mapa-solo .leaflet-bottom { bottom: 0 !important; }
@@ -1147,6 +1147,10 @@
         #adm-detalle .avance .av-t { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: #a07a4e; }
         #adm-detalle .avance .av-t b { color: #5a3d26; font-size: 13.5px; }
         #adm-detalle .avance .pbar { margin: 7px 0 0; background: #e6d6bf; }
+
+        /* Solo mapa (admin): la leyenda de rutas se queda en la parte superior, debajo de la tarjeta */
+        body.mapa-solo.vista-admin #leyenda-rutas-barra { position: absolute !important; top: 82px !important; left: 10px !important; right: 10px !important; z-index: 1150; }
+        body.mapa-solo.vista-admin .leaflet-top.leaflet-left { top: 124px !important; }
 </style>
 </head>
 <body>
@@ -1660,8 +1664,23 @@
                 return original.apply(null, arguments);
             };
         });
+        // Admin: si mueve o hace zoom al mapa a mano, los refrescos automáticos YA NO lo regresan a "ver todo".
+        // La vista se vuelve a encuadrar sola solo cuando cambia el filtro (día/ruta), al dividir rutas o con "Ver todo el mapa".
+        let admVistaFijaPorUsuario = false;
+        // Leaflet hace sus zooms de usuario (rueda, pellizco, doble toque) llamando internamente a setView, que arriba
+        // se marca como "programático". Por eso el admin se detecta también por los eventos directos del contenedor.
+        (function () {
+            const cont = map.getContainer();
+            const fijar = () => { if (ROL_ACTUAL === "admin") admVistaFijaPorUsuario = true; };
+            cont.addEventListener('wheel', fijar, { passive: true });
+            cont.addEventListener('dblclick', fijar);
+            cont.addEventListener('touchmove', fijar, { passive: true });
+            cont.addEventListener('mousemove', e => { if (e.buttons) fijar(); });
+            cont.addEventListener('click', e => { if (e.target.closest && e.target.closest('.leaflet-control-zoom')) fijar(); });
+        })();
         map.on('dragstart zoomstart', () => {
             if (_cambioMapaProgramatico) return;
+            if (ROL_ACTUAL === "admin") admVistaFijaPorUsuario = true;
             if (ROL_ACTUAL === "repartidor" && seguimientoCamaraActivo) {
                 seguimientoCamaraActivo = false;
                 marcarBotonCentrarComoPausado(true);
@@ -2227,6 +2246,7 @@
         }
 
         function aplicarFiltroDia(dia) {
+            admVistaFijaPorUsuario = false; // cambió el filtro: se encuadra de nuevo
             diaActivoFiltrado = dia;
             const _fd = document.getElementById("filtro-dia");
             if (_fd && _fd.value !== dia) _fd.value = dia;
@@ -2311,6 +2331,7 @@
         }
 
         function aplicarFiltroDeRutaMapeada(valor) {
+            admVistaFijaPorUsuario = false; // cambió la ruta visible: se encuadra de nuevo
             rutaActivaFiltrada = valor;
             refrescarMapaYListasVisuales();
             if(rutasOptimizadasActivas) trazarLineasYCalcularTiemposOSRM();
@@ -2798,7 +2819,7 @@ if (punto.notas && punto.notas.trim() !== "") {
     // para que un refresco automático no le arrebate la vista que ya tenía.
     // Este encuadre va DESPUÉS de procesar los clientes sin ruta para que sus coordenadas
     // también se incluyan — si no, sus pines podían quedar fuera del área visible.
-    const debeEncuadrarAutomaticamente = ROL_ACTUAL !== "repartidor" || !primerEncuadreRepartidorHecho;
+    const debeEncuadrarAutomaticamente = ROL_ACTUAL === "admin" ? !admVistaFijaPorUsuario : (ROL_ACTUAL !== "repartidor" || !primerEncuadreRepartidorHecho);
     if (coordenadasParaEncuadre.length > 1 && debeEncuadrarAutomaticamente) {
         map.fitBounds(coordenadasParaEncuadre, opcionesEncuadreMapa());
         if (ROL_ACTUAL === "repartidor") primerEncuadreRepartidorHecho = true;
@@ -5010,6 +5031,7 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
 
         function calcularMultiRutasEquitativas() {
             if (ROL_ACTUAL !== "admin") return;
+            admVistaFijaPorUsuario = false; // rutas nuevas: se encuadra de nuevo
 
             let numRutasInput = parseInt(document.getElementById("num-repartidores").value);
             if (isNaN(numRutasInput) || numRutasInput < 1) {
@@ -5614,6 +5636,7 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
             ultimaPosicionGPSVivo = null; ultimaPosicionGPSReal = null; // evita reusar una posición vieja de una sesión/ruta anterior
             seguimientoCamaraActivo = true;
             primerEncuadreRepartidorHecho = false;
+            admVistaFijaPorUsuario = false;
             marcarBotonCentrarComoPausado(false);
             document.getElementById("role-gate-modal").style.display = "none";
             document.body.classList.remove("vista-admin", "vista-repartidor");
