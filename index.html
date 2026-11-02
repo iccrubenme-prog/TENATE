@@ -1136,6 +1136,17 @@
         @media (min-height: 541px), (orientation: portrait) {
             body.mapa-solo.vista-repartidor #nav-botones-circulares { bottom: calc(var(--solo-h, 110px) + 18px) !important; }
         }
+
+        /* Barras de avance de entregas (panel admin) */
+        .pbar { display: block; height: 6px; border-radius: 6px; background: #e6d6bf; overflow: hidden; margin-top: 6px; }
+        .pbar > i { display: block; height: 100%; background: #8fae7e; border-radius: 6px; transition: width .4s ease; min-width: 0; }
+        .pbar.full > i { background: #6f9a5f; }
+        .pbar-g { height: 8px; margin: 0 0 10px; }
+        #adm-sheet .row .rtx { flex: 1; min-width: 0; }
+        #adm-detalle .avance { background: #f5ece3; border-radius: 14px; padding: 9px 12px 10px; margin-bottom: 10px; }
+        #adm-detalle .avance .av-t { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: #a07a4e; }
+        #adm-detalle .avance .av-t b { color: #5a3d26; font-size: 13.5px; }
+        #adm-detalle .avance .pbar { margin: 7px 0 0; background: #e6d6bf; }
 </style>
 </head>
 <body>
@@ -1297,6 +1308,7 @@
         <div id="adm-sheet">
             <div class="grab"></div>
             <div class="stat"><div>Entregados<b id="adm-st-ent">0/0</b></div><div>En línea<b id="adm-st-vivo">0</b></div><div>Cobro total<b id="adm-st-cobro">$0</b></div></div>
+            <span class="pbar pbar-g" id="adm-st-pbar" role="progressbar" aria-label="Avance total de entregas"><i id="adm-st-bar" style="width:0%"></i></span>
             <div id="adm-sheet-rutas"></div>
             <button class="vermas" onclick="cambiarTabAdmin('lista')">Ver lista de clientes ▸</button>
         </div>
@@ -4576,6 +4588,8 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
                     html += `<div class="estado ${viejo ? "viejo" : ""}" style="margin-bottom:10px"><i></i>${viejo ? "Sin señal reciente" : "Repartidor conectado"} · ${seg < 60 ? `hace ${seg} s` : `hace ${Math.round(seg / 60)} min`}</div>`;
                 }
                 html += `<div class="resumen"><div>Cobro<b>$${cobro.toLocaleString('es-MX', {maximumFractionDigits: 0})}</b></div><div>Avance<b>${ent}/${cli.length}</b></div><div>Tiempo<b>${t ? escAdm(t[1]) : "—"}</b></div></div>`;
+                { const pc = cli.length ? Math.round(ent * 100 / cli.length) : 0;
+                  html += `<div class="avance"><div class="av-t"><span>Avance de entregas</span><b>${ent} de ${cli.length} · ${pc}%${cli.length && ent === cli.length ? " ✓" : ""}</b></div><span class="pbar pbar-g ${cli.length && ent === cli.length ? "full" : ""}" role="progressbar" aria-valuemin="0" aria-valuemax="${cli.length}" aria-valuenow="${ent}"><i style="width:${pc}%"></i></span></div>`; }
                 html += `<button class="verMapa" onclick="verRutaEnMapaAdmin(${idx})">🗺️ Ver esta ruta en el mapa</button>`;
                 if (conx) html += `<button class="verMapa" style="background:#D7B182;color:#3b2a1c" onclick="enfocarEnMapaAdmin(${conx.lat}, ${conx.lng})">📍 Ir al repartidor</button>`;
                 if (cli.length === 0) html += '<div class="vacio">Esta ruta no tiene clientes con el filtro actual.</div>';
@@ -4681,12 +4695,13 @@ function crearIconoRepartidorEnVivo(anguloGrados) {
                 const t = tiemposEstimadosRutas[idx] || "";
                 const m = t.match(/Total Recorrido:\s*(.+)$/);
                 const nombre = nombres[idx] ? ` · ${nombres[idx]}` : "";
-                filas += `<div class="row" role="button" tabindex="0" onclick="cambiarTabAdmin({tipo:'ruta', idx:${idx}})"><div class="dot" style="background:${obtenerColorRuta(idx)}"></div><div><b>Ruta ${idx + 1}${escAdm(nombre)}${estadoConexionRutaAdmin(idx) ? `<span class="vivo-dot ${estadoConexionRutaAdmin(idx) === 'viejo' ? 'viejo' : ''}" title="Repartidor conectado"></span>` : ''}</b><small>${plAdm(cli.length,'cliente')} · ${plAdm(ent,'entregado')}</small></div><em>$${cobro.toLocaleString('es-MX', {maximumFractionDigits: 0})}${(m && !/^0\s*min/i.test(m[1])) ? `<br><small style="font-weight:400">⏱ ${m[1]}</small>` : ""}</em></div>`;
+                filas += `<div class="row" role="button" tabindex="0" onclick="cambiarTabAdmin({tipo:'ruta', idx:${idx}})"><div class="dot" style="background:${obtenerColorRuta(idx)}"></div><div class="rtx"><b>Ruta ${idx + 1}${escAdm(nombre)}${estadoConexionRutaAdmin(idx) ? `<span class="vivo-dot ${estadoConexionRutaAdmin(idx) === 'viejo' ? 'viejo' : ''}" title="Repartidor conectado"></span>` : ''}</b><small>${plAdm(cli.length,'cliente')} · ${plAdm(ent,'entregado')} · ${Math.round(ent * 100 / cli.length)}%${ent === cli.length ? ' ✓' : ''}</small><span class="pbar ${ent === cli.length ? 'full' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="${cli.length}" aria-valuenow="${ent}"><i style="width:${Math.round(ent * 100 / cli.length)}%"></i></span></div><em>$${cobro.toLocaleString('es-MX', {maximumFractionDigits: 0})}${(m && !/^0\s*min/i.test(m[1])) ? `<br><small style="font-weight:400">⏱ ${m[1]}</small>` : ""}</em></div>`;
             });
             const sinRutaLista = (rutaActivaFiltrada === "todas" || rutaActivaFiltrada === "sinruta") ? clientesSinRutaFiltrados() : [];
             if (sinRutaLista.length) filas += `<div class="row" role="button" tabindex="0" onclick="cambiarTabAdmin({tipo:'sinruta'})"><div class="dot" style="background:#95a5a6"></div><div><b>Clientes sin ruta</b><small>${plAdm(sinRutaLista.length,'cliente')} · sin repartidor asignado</small></div></div>`;
             document.getElementById("adm-sheet-rutas").innerHTML = (filas ? filas : '') + (filas === '' ? '<div style="color:#8a7560;font-size:13px;padding:6px 2px;">Aún no hay rutas. Usa <b>Dividir</b> para crearlas.</div>' : '');
             document.getElementById("adm-st-ent").textContent = `${totalEnt}/${totalCli}`;
+            { const pg = totalCli ? Math.round(totalEnt * 100 / totalCli) : 0; const bg = document.getElementById("adm-st-bar"), pb = document.getElementById("adm-st-pbar"); if (bg) bg.style.width = pg + "%"; if (pb) pb.classList.toggle("full", totalCli > 0 && totalEnt === totalCli); }
             document.getElementById("adm-st-cobro").textContent = "$" + totalCobro.toLocaleString('es-MX', {maximumFractionDigits: 0});
             const vivo = document.querySelectorAll("#lista-ubicaciones-repartidores-items > *").length;
             const enLinea = repartidoresEnVivoAdmin.length;
