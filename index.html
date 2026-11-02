@@ -1737,15 +1737,7 @@
             map.invalidateSize();
         }
 
-        map.on('contextmenu', function(e) {
-            if (ROL_ACTUAL !== "admin") return; 
-            deposito.lat = e.latlng.lat; deposito.lng = e.latlng.lng;
-            rutasEstructuradas.forEach(r => { 
-                if(r[0] && r[0].id === 0) r[0] = deposito; 
-                if(r[r.length - 1] && r[r.length - 1].id === 0) r[r.length - 1] = deposito;
-            });
-            refrescarMapaYListasVisuales();
-        });
+        // (Se quitó mover el depósito con pulsación larga/clic derecho: se movía por accidente. Se cambia solo desde "Ubicación TENATE".)
 
         function obtenerEnlaceMaps(lat, lng) { return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`; }
 
@@ -1754,7 +1746,7 @@
             const entrada = prompt(`Configurar ubicación de ${deposito.nombre}:`, `${deposito.lat}, ${deposito.lng}`);
             if (entrada) {
                 const coordenadas = procesarCoordenadasDirectas(entrada);
-                if (coordenadas) {
+                if (coordenadas && confirm(`¿Cambiar la ubicación de ${deposito.nombre} a ${coordenadas.lat}, ${coordenadas.lng}?\n\nEste cambio solo dura hasta que se actualice la app.`)) {
                     deposito.lat = coordenadas.lat; deposito.lng = coordenadas.lng;
                     rutasEstructuradas.forEach(r => { 
                         if(r[0] && r[0].id === 0) r[0] = deposito; 
